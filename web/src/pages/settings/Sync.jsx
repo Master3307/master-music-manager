@@ -3,6 +3,7 @@ import { ArrowLeftRight, Plus, RefreshCw, Trash2, Pencil, HardDrive, Network, Ci
 import { useApp, useLoad } from '../../lib/app.jsx';
 import { get, post, patch, del } from '../../lib/api.js';
 import { ago, cx, plural } from '../../lib/util.js';
+import { useMenus } from '../../components/menus.jsx';
 import { Field, Toggle, Notice, Modal, Spinner, Empty, useConfirm, JobDetails } from '../../components/ui.jsx';
 
 const EVERY = [
@@ -17,6 +18,7 @@ const EVERY = [
 export function SyncSettings() {
   const { profiles, fail, toast, afterJob } = useApp();
   const confirm = useConfirm();
+  const menus = useMenus();
   const groups = useLoad(() => get('sync'), []);
   const nodes = useLoad(() => get('nodes').then((r) => r.nodes), []);
   const [edit, setEdit] = useState(null);
@@ -50,7 +52,20 @@ export function SyncSettings() {
       {groups.loading && !groups.data && <Spinner />}
       {groups.data && !groups.data.length && <Empty icon={ArrowLeftRight} title="Nothing is kept in sync yet">Make a sync to have, for example, your home server and your PC hold the same music.</Empty>}
       {groups.data?.map((g) => (
-        <div key={g.id} className="panel col" style={{ gap: 10, marginBottom: 12, opacity: g.enabled ? 1 : 0.6 }}>
+        <div
+          key={g.id}
+          className="panel col"
+          style={{ gap: 10, marginBottom: 12, opacity: g.enabled ? 1 : 0.6 }}
+          onContextMenu={(e) =>
+            menus.custom(e, g.name, [
+              { label: 'Edit…', icon: Pencil, onClick: () => setEdit({ id: g.id, name: g.name, members: g.members.map(({ nodeId, profileId }) => (nodeId ? { nodeId, profileId } : { profileId })), ...g.options }) },
+              { label: 'Sync now', icon: RefreshCw, disabled: Boolean(g.running), onClick: () => runNow(g) },
+              { label: g.enabled ? 'Pause it' : 'Turn it on again', icon: ArrowLeftRight, onClick: () => patch(`sync/${g.id}`, { enabled: !g.enabled }).then(groups.reload, fail) },
+              'sep',
+              { label: 'Stop syncing…', icon: Trash2, danger: true, onClick: async () => { if (await confirm({ title: `Stop syncing ${g.name}?`, body: 'No songs are deleted. The places just stop being kept in sync.', confirm: 'Stop syncing', danger: true })) del(`sync/${g.id}`).then(groups.reload, fail); } },
+            ])
+          }
+        >
           <div className="row">
             <ArrowLeftRight size={18} />
             <b className="grow ellipsis">{g.name}</b>

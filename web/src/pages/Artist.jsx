@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Shuffle, Share2, Pencil, Heart, Radio as RadioIcon, ListMusic, ImagePlus, Check } from 'lucide-react';
 import { useApp, useLoad } from '../lib/app.jsx';
 import { usePlayer } from '../lib/player.jsx';
@@ -52,7 +52,13 @@ export default function Artist() {
   const p = usePlayer();
   const { data: a, loading, error, reload } = useLoad(() => get(`p/${pid}/artists/${encodeURIComponent(id)}`), [pid, id]);
   const info = useLoad(() => (a?.name ? get(`p/${pid}/artist-info`, { name: a.name }) : null), [pid, a?.name]);
-  const [edit, setEdit] = useState(false);
+  // ?edit=1 (from a right-click menu) opens the editor right away.
+  const [params, setParams] = useSearchParams();
+  const [edit, setEditState] = useState(() => params.get('edit') === '1');
+  const setEdit = (v) => {
+    setEditState(v);
+    if (!v && params.has('edit')) setParams((x) => { x.delete('edit'); return x; }, { replace: true });
+  };
   const [share, setShare] = useState(false);
   const [img, setImg] = useState(false);
   const [imgVersion, setImgVersion] = useState(0);

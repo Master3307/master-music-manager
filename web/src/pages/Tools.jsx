@@ -4,6 +4,7 @@ import { FolderTree, Check, Download, Copy, Archive, FileText, RotateCcw, Trash2
 import { useApp, useLoad } from '../lib/app.jsx';
 import { get, post, put, del, download } from '../lib/api.js';
 import { fmtSize, plural, ago, copy, cx } from '../lib/util.js';
+import { useMenus } from '../components/menus.jsx';
 import { Empty, Field, Notice, Spinner, Segmented, Toggle, useConfirm, Modal } from '../components/ui.jsx';
 
 const VARS = ['{title}', '{artist}', '{album}', '{albumartist}', '{folderartist}', '{primaryartist}', '{year}', '{track:2}', '{disc}', '{genre:first}', '{label}', '{ext}', '{artist:initial}', '{album|title}', '{?disctotal>1:CD{disc}/}', '{tag.NAME}'];
@@ -204,6 +205,16 @@ export function Export() {
 export function Trash() {
   const { fail, toast } = useApp();
   const confirm = useConfirm();
+  const menus = useMenus();
+  const putBack = async (x) => {
+    try {
+      await post(`trash/${encodeURIComponent(x.id)}/restore`);
+      toast('Put back');
+      reload();
+    } catch (e) {
+      fail(e);
+    }
+  };
   const { data, loading, reload } = useLoad(() => get('trash'), []);
   const total = (data || []).reduce((a, x) => a + (x.size || 0), 0);
   return (
@@ -219,7 +230,7 @@ export function Trash() {
       {loading && <Spinner />}
       {data && !data.length && <Empty icon={Trash2} title="The trash is empty" />}
       {(data || []).map((x) => (
-        <div key={x.id} className="row" style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
+        <div key={x.id} className="row" style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }} onContextMenu={(e) => menus.custom(e, x.path.split('/').pop(), [{ label: 'Put back', icon: RotateCcw, onClick: () => putBack(x) }, { label: 'Copy the path', icon: Copy, onClick: () => navigator.clipboard.writeText(x.path).then(() => toast('Copied')) }])}>
           <div className="grow" style={{ minWidth: 0 }}>
             <div className="mono ellipsis" style={{ fontSize: 13 }}>{x.path}</div>
             <div className="faint" style={{ fontSize: 12 }}>{ago(x.at)} · {fmtSize(x.size)}{x.via ? ` · via ${x.via}` : ''}</div>

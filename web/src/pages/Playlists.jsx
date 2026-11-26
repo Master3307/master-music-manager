@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Plus, ListMusic, Share2, Trash2, Pencil, ImagePlus, Wand2, Shuffle, Download, Globe, Lock, Check } from 'lucide-react';
 import { useApp, useLoad } from '../lib/app.jsx';
 import { usePlayer } from '../lib/player.jsx';
@@ -100,10 +100,20 @@ export function Playlist() {
   const p = usePlayer();
   const confirm = useConfirm();
   const { data: pl, loading, error, reload, setData } = useLoad(() => get(`p/${pid}/playlists/${encodeURIComponent(id)}`), [pid, id]);
-  const [edit, setEdit] = useState(null);
+  const [edit, setEditState] = useState(null);
+  const [params, setParams] = useSearchParams();
+  const setEdit = (v) => {
+    setEditState(v);
+    if (!v && params.has('edit')) setParams((x) => { x.delete('edit'); return x; }, { replace: true });
+  };
   const [share, setShare] = useState(false);
   const [img, setImg] = useState(false);
   const [v, setV] = useState(0);
+  // ?edit=1 (from a right-click menu) opens the editor once the playlist is there.
+  useEffect(() => {
+    if (pl && params.get('edit') === '1' && !edit && !pl.smart) setEditState({ name: pl.name, comment: pl.comment || '', public: Boolean(pl.public) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pl?.id]);
   if (loading && !pl) return <Spinner />;
   if (error) return <Notice kind="danger">{error.message}</Notice>;
   if (!pl) return null;

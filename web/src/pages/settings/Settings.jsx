@@ -13,6 +13,7 @@ import { Field, Toggle, Notice, Segmented, Modal, Spinner, useConfirm, CopyField
 import { ProfileForm, useDetect } from '../../components/ProfileForm.jsx';
 import { Account, Instances, Plugin, Backup, Logs, System } from './More.jsx';
 import { ThemeStudio } from './Themes.jsx';
+import { useMenus } from '../../components/menus.jsx';
 import { CssEditor } from '../../components/CssEditor.jsx';
 
 const NAV = [
@@ -306,6 +307,7 @@ function Look() {
 
 function Profiles() {
   const { profiles, loadProfiles, fail, toast, afterJob, setPid } = useApp();
+  const menus = useMenus();
   const [params] = useSearchParams();
   const [adding, setAdding] = useState(params.get('add') === '1');
   const [editing, setEditing] = useState(null);
@@ -323,7 +325,22 @@ function Profiles() {
         <button className="btn primary" onClick={() => setAdding(true)}><Plus /> Add</button>
       </div>
       {profiles.map((p) => (
-        <div key={p.id} className="panel">
+        <div
+          key={p.id}
+          className="panel"
+          onContextMenu={(e) =>
+            menus.custom(e, p.name, [
+              { label: 'Edit…', icon: Pencil, onClick: () => setEditing(p) },
+              { label: 'Use it now', icon: Check, onClick: () => setPid(p.id) },
+              p.localPath && { label: 'Read the folder', icon: RefreshCw, onClick: async () => { const r = await post(`p/${p.id}/scan`, { full: false }); toast('Reading the folder…'); afterJob(r.job).then(loadProfiles); } },
+              p.features?.scan && { label: 'Quick server rescan', icon: RefreshCw, onClick: () => post(`p/${p.id}/service-scan`, { full: false }).then(() => toast(`${p.name} is looking for changes`), fail) },
+              (p.publicUrl || p.url) && { label: `Open ${p.kindLabel}`, icon: ExternalLink, onClick: () => window.open(p.publicUrl || p.url, '_blank', 'noopener') },
+              p.localPath && { label: 'Copy the folder path', icon: CopyIcon, onClick: () => navigator.clipboard.writeText(p.localPath).then(() => toast('Copied')) },
+              'sep',
+              { label: 'Remove…', icon: Trash2, danger: true, onClick: async () => { if (await confirm({ title: `Remove ${p.name}?`, body: 'Only the connection is removed. No music is deleted.', danger: true, confirm: 'Remove' })) del(`profiles/${p.id}`).then(loadProfiles, fail); } },
+            ])
+          }
+        >
           <div className="row">
             {p.features?.service ? (p.status?.online ? <Wifi size={18} style={{ color: 'var(--ok)' }} /> : <WifiOff size={18} style={{ color: 'var(--danger)' }} />) : <HardDrive size={18} className="faint" />}
             <b className="grow">{p.name}</b>

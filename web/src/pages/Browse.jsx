@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { Shuffle, Share2, Pencil, Folder, Radio as RadioIcon, Plus, Trash2, Heart, Play, ExternalLink, Disc3, Music2 } from 'lucide-react';
+import { Shuffle, Share2, Pencil, Folder, Radio as RadioIcon, Plus, Trash2, Heart, Play, ExternalLink, Disc3, Music2, Copy } from 'lucide-react';
 import { useApp, useLoad } from '../lib/app.jsx';
 import { usePlayer } from '../lib/player.jsx';
 import { get, post, del } from '../lib/api.js';
@@ -285,6 +285,7 @@ export function Favorites() {
 
 export function Radio() {
   const { pid, fail, toast } = useApp();
+  const menus = useMenus();
   const p = usePlayer();
   const confirm = useConfirm();
   const { data: raw, loading, error, reload } = useLoad(() => get(`p/${pid}/radios`), [pid]);
@@ -328,7 +329,22 @@ export function Radio() {
       {data && !data.length && <Empty icon={RadioIcon} title="No stations yet">Add one with its stream address (often ends in .mp3, .aac or .m3u8).</Empty>}
       <div className="col" style={{ gap: 6 }}>
         {(data || []).map((r) => (
-          <div key={r.id} className="panel row" style={{ padding: '10px 14px' }}>
+          <div
+            key={r.id}
+            className="panel row"
+            style={{ padding: '10px 14px' }}
+            onContextMenu={(e) =>
+              menus.custom(e, r.name, [
+                { label: 'Play', icon: Play, onClick: () => p.playList([{ id: `radio:${r.id}`, title: r.name, artist: 'Internet radio', radio: r.streamUrl }], 0, pid) },
+                { label: 'Edit…', icon: Pencil, onClick: () => setEdit(r) },
+                { label: 'Share…', icon: Share2, onClick: () => setShare(r) },
+                r.homepageUrl && { label: 'Open the website', icon: ExternalLink, onClick: () => window.open(r.homepageUrl, '_blank', 'noopener') },
+                { label: 'Copy the stream address', icon: Copy, onClick: () => navigator.clipboard.writeText(r.streamUrl).then(() => toast('Copied')) },
+                'sep',
+                { label: 'Remove', icon: Trash2, danger: true, onClick: async () => { if (await confirm({ title: `Remove ${r.name}?`, danger: true, confirm: 'Remove' })) del(`p/${pid}/radios/${r.id}`).then(reload, fail); } },
+              ])
+            }
+          >
             <button className="btn icon" onClick={() => p.playList([{ id: `radio:${r.id}`, title: r.name, artist: 'Internet radio', radio: r.streamUrl }], 0, pid)} aria-label={`Play ${r.name}`}><Play fill="currentColor" /></button>
             <div className="grow" style={{ minWidth: 0 }}>
               <b>{r.name}</b> {r.local && <span className="badge">in this app</span>}

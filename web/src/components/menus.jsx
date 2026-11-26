@@ -50,6 +50,8 @@ export function useMenus() {
   ];
 
   return {
+    /** Any page's own menu, in the same look: menus.custom(e, 'Heading', [items]). */
+    custom: (e, heading, items) => open(e, [heading && { heading }, ...items]),
     album: (e, a) =>
       open(e, [
         { heading: a.name },
@@ -58,7 +60,7 @@ export function useMenus() {
         { label: 'Open', icon: Disc3, onClick: () => nav(`/album/${encodeURIComponent(a.id)}`) },
         (a.artistId || a.artist) && { label: `Go to ${a.artist}`, icon: User, onClick: () => nav(a.artistId ? `/artist/${encodeURIComponent(a.artistId)}` : `/artists?q=${encodeURIComponent(a.artist)}`) },
         can('share') && { label: 'Share…', icon: Share2, onClick: () => dialog(<ShareDialog kind="album" refData={{ id: a.id }} title={a.name} pid={pid} />) },
-        caps.files && can('manage') && { label: 'Edit every song…', icon: Pencil, onClick: () => nav(`/library?q=${encodeURIComponent(`album:"${a.name}"`)}&edit=all`) },
+        caps.files && can('manage') && { label: 'Edit…', icon: Pencil, hint: 'every song', onClick: () => nav(`/library?q=${encodeURIComponent(`album:"${a.name}"`)}&edit=all`) },
         { label: 'Copy name', icon: Copy, onClick: () => copy(`${a.artist ? `${a.artist} - ` : ''}${a.name}`).then(() => toast('Copied')) },
       ]),
     artist: (e, a) =>
@@ -68,6 +70,7 @@ export function useMenus() {
         caps.service && !String(a.id).startsWith('lr:') && { label: 'Artist radio (similar songs)', icon: RadioIcon, onClick: run(async () => { const top = await artistSongs(pid, a); const sim = top[0] ? await get(`p/${pid}/similar/${encodeURIComponent(top[0].id)}`).catch(() => []) : []; p.playList(sim.length ? sim : shuffled(top), 0, pid); }) },
         'sep',
         { label: 'Open', icon: User, onClick: () => nav(`/artist/${encodeURIComponent(a.id)}`) },
+        can('manage') && { label: 'Edit…', icon: Pencil, hint: 'picture, about', onClick: () => nav(`/artist/${encodeURIComponent(a.id)}?edit=1`) },
         can('share') && { label: 'Share…', icon: Share2, onClick: () => dialog(<ShareDialog kind="artist" refData={{ id: a.id }} title={a.name} pid={pid} />) },
         caps.files && { label: 'All songs in the library', icon: Library, onClick: () => nav(`/library?q=${encodeURIComponent(`artist:"${a.name}"`)}`) },
         { label: 'Copy name', icon: Copy, onClick: () => copy(a.name).then(() => toast('Copied')) },
@@ -78,6 +81,8 @@ export function useMenus() {
         ...playItems(async () => (await get(`p/${pid}/playlists/${encodeURIComponent(pl.id)}`)).songs || [], { type: 'playlist', id: pl.id, name: pl.name, cover: pl.coverArt }),
         'sep',
         { label: 'Open', icon: ListMusic, onClick: () => nav(`/playlist/${encodeURIComponent(pl.id)}`) },
+        !pl.smart && can('personal') && { label: 'Edit…', icon: Pencil, hint: 'name, description', onClick: () => nav(`/playlist/${encodeURIComponent(pl.id)}?edit=1`) },
+        pl.smart && can('manage') && { label: 'Edit the rules…', icon: Pencil, onClick: () => nav('/smart') },
         can('share') && { label: 'Share…', icon: Share2, onClick: () => dialog(<ShareDialog kind="playlist" refData={{ id: pl.id }} title={pl.name} pid={pid} />) },
         !pl.smart && can('personal') && { label: 'Delete', icon: Trash2, danger: true, onClick: run(async () => { if (!confirm(`Delete “${pl.name}”? The songs stay.`)) return; await del(`p/${pid}/playlists/${encodeURIComponent(pl.id)}`); toast('Deleted'); onChanged?.(); }) },
       ]),
@@ -87,6 +92,8 @@ export function useMenus() {
         { label: 'Shuffle this genre', icon: Shuffle, onClick: run(async () => p.playList(await get(`p/${pid}/random`, { size: 200, genre: g.name }), 0, pid)) },
         { label: 'Pin to Quick play', icon: Pin, onClick: () => { pins.add({ type: 'genre', name: g.name }); toast('Pinned'); } },
         { label: 'Show its albums', icon: Disc3, onClick: () => nav(`/albums?genre=${encodeURIComponent(g.name)}`) },
+        caps.files && can('manage') && { label: 'Edit…', icon: Pencil, hint: 'rename everywhere', onClick: () => nav(`/library?q=${encodeURIComponent(`genre="${g.name}"`)}&cmd=${encodeURIComponent(`replace genre "${g.name}" "${g.name}"`)}`) },
+        { label: 'Copy name', icon: Copy, onClick: () => copy(g.name).then(() => toast('Copied')) },
       ]),
     queueItem: (e, q, i) =>
       open(e, [
@@ -94,6 +101,7 @@ export function useMenus() {
         { label: 'Play now', icon: Play, onClick: () => p.jump(i) },
         { label: 'Play next', icon: SkipForward, onClick: () => p.move(i, p.index + (i > p.index ? 1 : 0)) },
         { label: 'Remove from the queue', icon: Trash2, onClick: () => p.removeAt(i) },
+        q.localId && caps.files && can('manage') && { label: 'Edit…', icon: Pencil, onClick: () => nav(`/library?ids=${q.localId}&edit=1`) },
         'sep',
         q.albumId && { label: 'Go to the album', icon: Disc3, onClick: () => nav(`/album/${encodeURIComponent(q.albumId)}`) },
         q.artistId && { label: 'Go to the artist', icon: User, onClick: () => nav(`/artist/${encodeURIComponent(q.artistId)}`) },
@@ -109,7 +117,7 @@ export function useMenus() {
         p.current?.artistId && { label: 'Go to the artist', icon: User, onClick: () => nav(`/artist/${encodeURIComponent(p.current.artistId)}`) },
         p.current?.albumId && { label: 'Go to the album', icon: Disc3, onClick: () => nav(`/album/${encodeURIComponent(p.current.albumId)}`) },
         p.current && { label: 'Copy “Artist - Title”', icon: Copy, onClick: () => copy(`${p.current.artist || ''} - ${p.current.title}`).then(() => toast('Copied')) },
-        p.current?.localId && caps.files && can('manage') && { label: 'Edit this song…', icon: Pencil, onClick: () => nav(`/library?ids=${p.current.localId}`) },
+        p.current?.localId && caps.files && can('manage') && { label: 'Edit…', icon: Pencil, onClick: () => nav(`/library?ids=${p.current.localId}&edit=1`) },
         onHide && 'sep',
         onHide && { label: 'Hide the player', icon: PanelRight, onClick: onHide },
       ]),

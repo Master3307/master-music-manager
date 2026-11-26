@@ -7,12 +7,14 @@ import { get, post, patch, del, api } from '../lib/api.js';
 import { fmtTime, fmtSize, cx, plural, ago } from '../lib/util.js';
 import { Empty, Notice, Spinner, Modal, Field, Segmented, Toggle, useConfirm } from '../components/ui.jsx';
 import { ImageEditor } from '../components/ImageEditor.jsx';
+import { useMenus } from '../components/menus.jsx';
 
 const COLS = [['artist', 'Artist', 180], ['title', 'Title', 220], ['album', 'Album', 180], ['track', '#', 54], ['year', 'Year', 70], ['genre', 'Genre', 130]];
 
 export function InboxPanel({ embedded }) {
   const { profiles, pid, settings, saveSetting, fail, toast, afterJob, jobs } = useApp();
   const confirm = useConfirm();
+  const menus = useMenus();
   const finished = Object.values(jobs).filter((j) => j.status === 'done' && ['ingest', 'download', 'import'].includes(j.kind)).length;
   const { data, loading, reload, setData } = useLoad(() => get('inbox'), [finished]);
   const [sel, setSel] = useState(new Set());
@@ -112,7 +114,16 @@ export function InboxPanel({ embedded }) {
                   const t = it.meta.tags;
                   const plan = it.info.plan || {};
                   return (
-                  <div key={it.id} ref={virt.measureElement} data-index={index} className={cx('trow', sel.has(it.id) && 'sel')} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${start}px)`, gridTemplateColumns: `32px 56px ${COLS.map((c) => `${c[2]}px`).join(' ')} minmax(160px, 1fr) 120px`, height: 'auto', minHeight: 60, padding: '4px 0' }}>
+                  <div key={it.id} ref={virt.measureElement} data-index={index} onContextMenu={(e) => { if (e.target.closest('input')) return; menus.custom(e, t.title || it.name, [
+                      { label: playing === it.id ? 'Stop listening' : 'Listen', icon: playing === it.id ? Pause : Play, onClick: () => play(it) },
+                      { label: 'Change the cover…', icon: Image, onClick: () => setCover(it) },
+                      { label: 'Find the right details…', icon: Wand2, onClick: () => setFind(it) },
+                      { label: 'Recognize from the sound…', icon: Fingerprint, onClick: () => setRec(it) },
+                      sel.size > 1 && sel.has(it.id) && { label: `Set for ${sel.size} selected…`, icon: Wand2, onClick: () => setBulk({}) },
+                      'sep',
+                      { label: 'Import', icon: Check, onClick: () => doImport(sel.has(it.id) && sel.size > 1 ? [...sel] : [it.id]) },
+                      { label: sel.has(it.id) && sel.size > 1 ? `Throw away ${sel.size}` : 'Throw away', icon: Trash2, danger: true, onClick: () => remove(sel.has(it.id) && sel.size > 1 ? [...sel] : [it.id]) },
+                    ]); }} className={cx('trow', sel.has(it.id) && 'sel')} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${start}px)`, gridTemplateColumns: `32px 56px ${COLS.map((c) => `${c[2]}px`).join(' ')} minmax(160px, 1fr) 120px`, height: 'auto', minHeight: 60, padding: '4px 0' }}>
                     <div><input type="checkbox" checked={sel.has(it.id)} onChange={() => { const n = new Set(sel); n.has(it.id) ? n.delete(it.id) : n.add(it.id); setSel(n); }} aria-label="Select" /></div>
                     <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setCover(it)} title="Change the cover">
                       <img src={`/api/inbox/${it.id}/cover?v=${v}`} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover', background: 'var(--surface-2)' }} onError={(e) => (e.currentTarget.style.opacity = 0.15)} />

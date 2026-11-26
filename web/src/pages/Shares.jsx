@@ -3,6 +3,7 @@ import { Share2, Copy, ExternalLink, Trash2, Pencil, Globe, Lock, EyeOff, Downlo
 import { useApp, useLoad } from '../lib/app.jsx';
 import { get, patch, del } from '../lib/api.js';
 import { ago, date, copy, cx, plural } from '../lib/util.js';
+import { useMenus } from '../components/menus.jsx';
 import { Empty, Field, Modal, Notice, Spinner, Segmented, Toggle, CopyField, useConfirm } from '../components/ui.jsx';
 
 const KIND = { track: 'Song', album: 'Album', artist: 'Artist', playlist: 'Playlist', radio: 'Radio', selection: 'Songs' };
@@ -10,6 +11,7 @@ const KIND = { track: 'Song', album: 'Album', artist: 'Artist', playlist: 'Playl
 export default function Shares() {
   const { fail, toast, settings } = useApp();
   const confirm = useConfirm();
+  const menus = useMenus();
   const { data, loading, error, reload } = useLoad(() => get('shares'), []);
   const [edit, setEdit] = useState(null);
   const [newKey, setNewKey] = useState(null);
@@ -40,7 +42,20 @@ export default function Shares() {
       {data && !shares.length && <Empty icon={Share2} title="Nothing shared yet">Right-click a song or use the share button on an album, playlist or artist.</Empty>}
       <div className="col" style={{ gap: 8 }}>
         {shares.map((s) => (
-          <div key={`${s.source}-${s.id}`} className="panel row" style={{ padding: '12px 14px' }}>
+          <div
+            key={`${s.source}-${s.id}`}
+            className="panel row"
+            style={{ padding: '12px 14px' }}
+            onContextMenu={(e) =>
+              menus.custom(e, s.name || s.title || 'Share', [
+                { label: 'Edit…', icon: Pencil, onClick: () => setEdit({ ...s, key: '' }) },
+                { label: 'Copy the link', icon: Copy, onClick: () => copy(s.url).then(() => toast('Link copied')) },
+                { label: 'Open', icon: ExternalLink, onClick: () => window.open(s.url, '_blank', 'noopener') },
+                'sep',
+                { label: 'Delete', icon: Trash2, danger: true, onClick: async () => { if (await confirm({ title: 'Delete this share?', body: 'The link stops working.', danger: true, confirm: 'Delete' })) del(`shares/${s.id}`, { profileId: s.profileId, alsoOnService: 1 }).then(reload, fail); } },
+              ])
+            }
+          >
             <span className="badge">{KIND[s.kind] || 'Share'}</span>
             <div className="grow" style={{ minWidth: 0 }}>
               <div className="ellipsis"><b>{s.name || s.title || s.description || 'Untitled share'}</b> <span className="faint mono" style={{ fontSize: 12 }}>{s.id}</span></div>
