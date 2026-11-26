@@ -66,7 +66,7 @@ toml_get() {
 }
 
 # ── Where is Navidrome? ───────────────────────────────────────────────
-MODE="" ND_BIN="" WORKDIR=""
+MODE="" ND_BIN="" WORKDIR="" RESTART=""
 if [ -z "$CONTAINER" ] && command -v docker >/dev/null 2>&1; then
   CONTAINER="$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | awk 'tolower($2) ~ /navidrome/ { print $1; exit }')" || true
 fi
@@ -79,6 +79,7 @@ if [ -n "$CONTAINER" ]; then
   DATA="$(cenv ND_DATAFOLDER)"; DATA="${DATA:-/data}"
   [ -z "$PLUGINS" ] && PLUGINS="$(cenv ND_PLUGINS_FOLDER)"
   PLUGINS="${PLUGINS:-$DATA/plugins}"
+  RESTART="docker restart $CONTAINER"
   say "Found Navidrome in the Docker container ${b}$CONTAINER${off}"
 else
   MODE=native
@@ -98,6 +99,7 @@ else
     uenv() { printf '%s\n' $envs | sed -n "s/^$1=//p" | tr -d '"' | tail -1; }
     [ -z "$CONFIG" ] && CONFIG="$(uenv ND_CONFIGFILE)"
     ENV_DATA="$(uenv ND_DATAFOLDER)"; ENV_PLUGINS="$(uenv ND_PLUGINS_FOLDER)"
+    RESTART="systemctl restart $unit"
     say "Found Navidrome as the service ${b}$unit${off}"
   fi
   [ -z "$ND_BIN" ] && ND_BIN="$(command -v navidrome || true)"
@@ -134,7 +136,7 @@ nd() {
   else die "Navidrome runs as '$NDUSER'. Run this with sudo."; fi
 }
 # Drop Navidrome's ASCII banner (lines of only these characters) and info logs.
-quiet() { grep -vE "^[][ _|\\/\`'.,()-]*\$|Version: |level=(info|debug)|No configuration file" || true; }
+quiet() { grep -vE "^[][ _|\\/\`'.,()V-]*\$|Version: |level=(info|debug)|No configuration file" || true; }
 
 # ── The plugin file ───────────────────────────────────────────────────
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
@@ -179,4 +181,8 @@ nd edit master-music-manager --config "$cfg" --all-users 2>&1 | quiet
 nd enable master-music-manager 2>&1 | quiet
 nd list 2>&1 | awk '$1 == "master-music-manager"' | grep -q true || die "Navidrome didn't enable it. Its log says why (plugin errors are listed there)."
 echo
-say "${ok}✓ Done.${off} Every play in Navidrome now reaches Master Music Manager. Settings → Navidrome plugin shows when it last heard from it."
+say "${ok}✓ Set up and enabled.${off}"
+# A running Navidrome loads plugin changes made here when it starts.
+say "Last step: restart Navidrome so it loads the plugin (music playing right now stops for a moment):"
+say "  ${b}${RESTART:-restart Navidrome}${off}"
+say "Then every play reaches Master Music Manager. Settings → Navidrome plugin shows when it last heard from it."
