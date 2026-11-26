@@ -16,19 +16,9 @@ export default function Login() {
   const [needsCode, setNeedsCode] = useState(false);
   const [err, setErr] = useState(ERRORS[params.get('error')] || null);
   const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeOk, setCodeOk] = useState(!me?.setupNeedsCode);
   if (me?.user) return <Navigate to="/" replace />;
-  if (me?.setupFromLanOnly)
-    return (
-      <div className="center-page">
-        <div className="auth-card">
-          <Logo size={44} />
-          <h1>Almost ready</h1>
-          <p className="muted">
-            Master Music Manager isn’t set up yet. For safety, the first admin account can only be made from your own network. Open it with its local address (for example <span className="mono">http://192.168.x.x:4545</span>), create the account there, and then this address works too.
-          </p>
-        </div>
-      </div>
-    );
   if (me?.guest && !me?.needsAdmin) return <Navigate to="/" replace />;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
@@ -37,7 +27,7 @@ export default function Login() {
     setErr(null);
     setBusy(true);
     try {
-      if (mode === 'create') await post('auth/setup-admin', { username: f.username, password: f.password, displayName: f.displayName, requireLogin: f.requireLogin });
+      if (mode === 'create') await post('auth/setup-admin', { username: f.username, password: f.password, displayName: f.displayName, requireLogin: f.requireLogin, setupCode: code });
       else if (mode === 'local') {
         const r = await post('auth/login', { username: f.username, password: f.password, code: needsCode ? f.code : undefined });
         if (r.needsCode) {
@@ -52,6 +42,39 @@ export default function Login() {
     }
     setBusy(false);
   };
+
+  if (mode === 'create' && !codeOk)
+    return (
+      <div className="center-page">
+        <div className="ambient" style={{ '--ambient': 'var(--accent)' }} aria-hidden="true" />
+        <form
+          className="auth-card"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setErr(null);
+            try {
+              await post('auth/setup-code', { setupCode: code });
+              setCodeOk(true);
+            } catch (e2) {
+              setErr(e2.message);
+            }
+          }}
+        >
+          <Logo size={44} />
+          <h1>Almost ready</h1>
+          <p className="muted">
+            Nobody has set up this Master Music Manager yet. To make sure it’s you, type the setup code from the server. Get it by running <span className="mono">mmm setup-code</span> there (on Proxmox: <span className="mono">pct exec &lt;id&gt; -- mmm setup-code</span>). It’s also in the log.
+          </p>
+          <div className="col" style={{ gap: 12, marginTop: 14 }}>
+            <Field label="Setup code">
+              <input className="input mono" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="ABCD-EFGH" autoFocus autoComplete="off" spellCheck={false} />
+            </Field>
+            {err && <Notice kind="danger">{err}</Notice>}
+            <button className="btn primary" disabled={code.replace(/[^A-Z0-9]/g, '').length < 8} style={{ height: 42 }}><ShieldCheck /> Continue</button>
+          </div>
+        </form>
+      </div>
+    );
 
   const options = [me?.methods?.local !== false && { value: 'local', label: 'Account' }, services.length && { value: 'service', label: 'Music server' }].filter(Boolean);
   return (

@@ -86,11 +86,20 @@ const commands = {
   ${c.acc('mmm backup')} <file>     save settings, accounts, playlists… (no music)
   ${c.acc('mmm password')} <user>   set a new password for someone
   ${c.acc('mmm open-login')}        turn "require logging in" off (if you locked yourself out)
+  ${c.acc('mmm setup-code')}        the code for creating the first admin through the internet
   ${c.acc('mmm doctor')}            check FFmpeg, spotDL, yt-dlp, permissions, port
   ${c.acc('mmm service')} on|off    start with the computer (systemd)
   ${c.acc('mmm setup')}             the terminal setup (port, folders, service)
   ${c.acc('mmm plugin')}            install the Navidrome plugin on this machine
   ${c.acc('mmm version')}`);
+  },
+  async 'setup-code'() {
+    try {
+      console.log(`Setup code: ${c.b(fs.readFileSync(path.join(DATA, 'setup-code'), 'utf8').trim())}`);
+      console.log(c.dim('Type it on the "Almost ready" page to create the admin account from anywhere.'));
+    } catch {
+      console.log('There is no setup code: the admin account already exists (or the app has not started yet).');
+    }
   },
   async version() {
     console.log(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version);

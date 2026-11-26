@@ -8,6 +8,7 @@
 // Sessions: random token in an httpOnly SameSite=Lax cookie, stored as SHA-256.
 // Mutations need the X-MMM header (forces a CORS preflight we never allow) and
 // a same-site Origin.
+import crypto from 'node:crypto';
 import { TOTP, Secret } from 'otpauth';
 import { db, now, audit } from './db.js';
 import * as settings from './settings.js';
@@ -154,6 +155,30 @@ const isLoopback = (ip) => ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:
 // Before the first admin exists, the app is wide open; only allow that from
 // this machine or the local network, never through a public tunnel or proxy.
 import { isPrivate } from './lib/net.js';
+// A one-time code proves you have access to the machine (shown by `mmm setup-code`
+// and in the log), so the first admin can be made from anywhere.
+const SETUP_FILE = `${PATHS.data}/setup-code`;
+function setupCode() {
+  if (adminCount() > 0) {
+    fs.rmSync(SETUP_FILE, { force: true });
+    return null;
+  }
+  if (!fs.existsSync(SETUP_FILE)) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const code = Array.from(crypto.randomBytes(8), (b) => alphabet[b % alphabet.length]).join('');
+    fs.writeFileSync(SETUP_FILE, `${code.slice(0, 4)}-${code.slice(4)}\n`, { mode: 0o600 });
+  }
+  return fs.readFileSync(SETUP_FILE, 'utf8').trim();
+}
+export function announceSetupCode() {
+  const c = setupCode();
+  if (c) log.info(`Not set up yet. To create the admin through the internet, use the setup code ${c} (also: mmm setup-code).`);
+}
+const codeOk = (req) => {
+  const c = setupCode();
+  const got = String(req.get('x-mmm-setup-code') || req.body?.setupCode || '').trim().toUpperCase().replace(/\s/g, '');
+  return Boolean(c && got && safeEqual(got.replace(/-/g, ''), c.replace(/-/g, '')));
+};
 const fromLan = (req) => {
   const ip = String(req.ip || '').replace(/^::ffff:/, '');
   return isLoopback(req.ip) || ip === '127.0.0.1' || isPrivate(ip);
@@ -246,6 +271,7 @@ export function register(app, { services }) {
         user: req.user && !req.user.anonymous ? req.user : null,
         guest: req.user?.anonymous || false,
         setupFromLanOnly: adminCount() === 0 && !fromLan(req),
+        setupNeedsCode: adminCount() === 0 && !fromLan(req),
         listenOnly: Boolean(req.user?.guest),
         perms: permsOf(req.user),
         role: req.user?.role || null,
@@ -266,12 +292,22 @@ export function register(app, { services }) {
     }),
   );
 
+  app.post(
+    '/api/auth/setup-code',
+    json((req) => {
+      if (!loginLimit(req.ip)) throw httpError(429, 'Too many attempts. Wait a few minutes.');
+      if (adminCount() > 0) throw httpError(409, 'Already set up');
+      if (!codeOk(req)) throw httpError(401, 'That code is not right. Get it with: mmm setup-code');
+      return { ok: true };
+    }),
+  );
+
   // First admin. Only possible while no admin exists.
   app.post(
     '/api/auth/setup-admin',
     json(async (req, res) => {
       if (adminCount() > 0) throw httpError(409, 'An admin already exists');
-      if (!fromLan(req)) throw httpError(403, 'For safety, create the first admin from your own network (the local address), not through the internet.');
+      if (!fromLan(req) && !codeOk(req)) throw httpError(403, 'Enter the setup code. Get it on the server with: mmm setup-code');
       const username = str(req.body.username, 64).trim();
       const password = str(req.body.password, 256);
       if (!/^[\w.@-]{2,64}$/.test(username)) throw httpError(400, 'Use 2-64 letters, numbers, dots, dashes or underscores');

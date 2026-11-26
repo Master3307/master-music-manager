@@ -113,6 +113,7 @@ const server = app.listen(PORT, HOST, () => {
   log.info(`Master Music Manager ${VERSION} on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT} (data in ${DATA_DIR})`);
   for (const u of federation.lanUrls()) log.info(`  on your network: ${u}`);
   setTimeout(() => checkUpdate().catch(() => {}), 20_000);
+  auth.announceSetupCode();
 });
 server.requestTimeout = 0; // big uploads and archive downloads
 server.headersTimeout = 65_000;
