@@ -5,6 +5,7 @@ import {
   HardDrive, ExternalLink, Check, Copy as CopyIcon, ArrowLeftRight,
 } from 'lucide-react';
 import { SyncSettings } from './Sync.jsx';
+import { YouTubeCookies } from './Cookies.jsx';
 import { useApp } from '../../lib/app.jsx';
 import { get, post, del, patch } from '../../lib/api.js';
 import { previewDoc, resolvedMode } from '../../lib/theme.js';
@@ -560,7 +561,9 @@ function DownloadSettings() {
         <Field label={`Downloads at once: ${d.threads}`}><input type="range" min={1} max={8} value={d.threads || 2} onChange={(e) => setD({ threads: Number(e.target.value) })} style={{ accentColor: 'var(--accent)', maxWidth: 320 }} /></Field>
       </Section>
       <Section title="Advanced">
-        <Field label="YouTube cookies file" hint="A cookies.txt from your browser helps with age-restricted songs and rate limits."><input className="input mono" value={d.cookies || ''} onChange={(e) => setD({ cookies: e.target.value })} placeholder="/root/youtube-cookies.txt" /></Field>
+        <Field label="YouTube cookies" hint="Your YouTube login for downloads: age-restricted songs and fewer blocks. Saved encrypted, used for every download.">
+          <YouTubeCookies legacyField={<Field label="Or a cookies file already on the server" hint="Only used when none are uploaded above."><input className="input mono" value={d.cookies || ''} onChange={(e) => setD({ cookies: e.target.value })} placeholder="/root/youtube-cookies.txt" /></Field>} />
+        </Field>
         <div className="fields two">
           <Field label="spotDL program"><input className="input mono" value={d.spotdlBin || ''} onChange={(e) => setD({ spotdlBin: e.target.value })} /></Field>
           <Field label="yt-dlp program"><input className="input mono" value={d.ytdlpBin || ''} onChange={(e) => setD({ ytdlpBin: e.target.value })} /></Field>

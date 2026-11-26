@@ -14,6 +14,7 @@ import { ingest, importItems } from './inbox.js';
 import { httpError, json, str, bool } from './lib/http.js';
 import { requireUser, requireAdmin } from './auth.js';
 import { db, audit } from './db.js';
+import * as cookies from './cookies.js';
 import { getProfile, canUse } from './services/index.js';
 
 const BIN_DIR = path.join(PATHS.data, 'bin');
@@ -138,6 +139,7 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
         }
       };
       const watcher = setInterval(() => pick().catch(() => {}), 4000);
+      const jar = cookies.open(); // a private copy of the YouTube cookies for this run
       try {
         if (src.tool === 'spotdl') {
           const fmt = ['mp3', 'flac', 'ogg', 'opus', 'm4a', 'wav'].includes(conv.format) ? conv.format : 'mp3';
@@ -150,7 +152,7 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
           const args = ['download', target, '--output', path.join(work, '{artists} - {title}.{output-ext}'), '--format', fmt, '--threads', String(d.threads || 2), '--audio', ...String(d.providers || 'youtube-music youtube').split(/\s+/).filter(Boolean), '--search-query', d.searchQuery || '{artist} - {title}', '--print-errors'];
           if (fmt === 'mp3') args.push('--bitrate', conv.mp3Mode === 'cbr' ? `${conv.bitrate}k` : 'disable');
           if (!d.filterResults) args.push('--dont-filter-results');
-          if (d.cookies && fs.existsSync(d.cookies)) args.push('--cookie-file', d.cookies);
+          if (jar.file) args.push('--cookie-file', jar.file);
           if (d.extraArgs) args.push(...d.extraArgs.split(/\s+/).filter(Boolean));
           await ctx.run(d.spotdlBin || 'spotdl', args, {
             env,
@@ -169,7 +171,7 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
             '-f', wantVideo ? 'bv*[height<=1080]+ba/b' : 'ba/b', '--merge-output-format', 'mkv',
           ];
           if (isSearch) args.push('--playlist-items', '1');
-          if (d.cookies && fs.existsSync(d.cookies)) args.push('--cookies', d.cookies);
+          if (jar.file) args.push('--cookies', jar.file);
           if (d.extraArgs) args.push(...d.extraArgs.split(/\s+/).filter(Boolean));
           args.push(target);
           await ctx.run(d.ytdlpBin || 'yt-dlp', args, {
@@ -184,6 +186,7 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
           });
         }
       } finally {
+        jar.close();
         clearInterval(watcher);
       }
       await pick();
