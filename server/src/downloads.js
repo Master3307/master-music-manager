@@ -164,25 +164,48 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
             const [x, y] = target.split('|').map((t) => t.trim());
             target = /spotify/i.test(x) ? `${y}|${x}` : `${x}|${y}`;
           }
-          const args = ['download', target, '--output', path.join(work, '{artists} - {title}.{output-ext}'), '--format', fmt, '--threads', String(d.threads || 2), '--audio', ...String(d.providers || 'youtube-music youtube').split(/\s+/).filter(Boolean), '--search-query', d.searchQuery || '{artist} - {title}', '--print-errors'];
-          if (fmt === 'mp3') args.push('--bitrate', conv.mp3Mode === 'cbr' ? `${conv.bitrate}k` : 'disable');
-          if (!d.filterResults) args.push('--dont-filter-results');
-          if (jar.file) args.push('--cookie-file', jar.file);
-          if (d.extraArgs) args.push(...d.extraArgs.split(/\s+/).filter(Boolean));
-          await ctx.run(d.spotdlBin || 'spotdl', args, {
-            env,
-            onData: (s) => {
+          // Run inside the download folder with a plain file name: spotDL "cleans" every part
+          // of an output path and drops leading dots, which turned our data folder
+          // (".master-music-manager") into a new folder inside the music library.
+          const base = (query, providers) => {
+            const args = ['download', ...[].concat(query), '--output', '{artists} - {title}.{output-ext}', '--format', fmt, '--threads', String(d.threads || 2), '--audio', ...providers, '--search-query', d.searchQuery || '{artist} - {title}', '--print-errors'];
+            if (fmt === 'mp3') args.push('--bitrate', conv.mp3Mode === 'cbr' ? `${conv.bitrate}k` : 'disable');
+            if (!d.filterResults) args.push('--dont-filter-results');
+            if (jar.file) args.push('--cookie-file', jar.file);
+            if (d.extraArgs) args.push(...d.extraArgs.split(/\s+/).filter(Boolean));
+            return args;
+          };
+          const failedTracks = new Set();
+          const onData = (out) => {
+            for (const line of String(out).split(/\r?\n/)) {
               // spotDL: "Found 12 songs", "Downloaded "Artist - Title"", "3/12 complete", errors.
-              const found = s.match(/Found (\d+) songs?/i);
+              const found = line.match(/Found (\d+) songs?/i);
               if (found) Object.assign(st, { total: Number(found[1]), phase: 'Downloading' });
-              const got = s.match(/Downloaded "([^"]+)"/i);
-              if (got) Object.assign(st, { name: got[1], phase: 'Downloading' });
-              const m = s.match(/(\d+)\/(\d+)\s+complete/i);
+              const got = line.match(/Downloaded "([^"]+)"/i);
+              if (got) Object.assign(st, { name: got[1], phase: 'Downloading', item: Math.min(st.item + 1, st.total || st.item + 1) });
+              const m = line.match(/(\d+)\/(\d+)\s+complete/i);
               if (m) Object.assign(st, { item: Math.min(Number(m[1]) + 1, Number(m[2])), total: Number(m[2]), pct: 0 });
-              if (/LookupError|AudioProviderError|No results found/i.test(s)) st.failed++;
-              show();
-            },
-          });
+              const bad = line.match(/(https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+)\s+-\s+\w*Error/);
+              if (bad) failedTracks.add(bad[1]);
+              if (/^(AudioProviderError|LookupError|DownloaderError)|No results found/i.test(line.trim())) st.failed++;
+            }
+            show();
+          };
+          const providers = String(d.providers || 'youtube-music youtube').split(/\s+/).filter(Boolean);
+          await ctx.run(d.spotdlBin || 'spotdl', base(target, providers), { env, cwd: work, allowFail: true, onData });
+          // Everything possible: songs that failed get one more try from other places.
+          if (failedTracks.size) {
+            const retry = [...failedTracks];
+            const more = ['youtube', 'youtube-music', 'piped', 'soundcloud', 'bandcamp', 'slider-kz'].filter((p) => !providers.includes(p));
+            ctx.log(`Trying the ${retry.length} that failed again, from ${more.join(', ')}…`);
+            Object.assign(st, { phase: `Trying ${retry.length} again from other places`, pct: 0, name: '' });
+            const failedBefore = st.failed;
+            st.failed = 0;
+            failedTracks.clear();
+            await ctx.run(d.spotdlBin || 'spotdl', base(retry, more), { env, cwd: work, allowFail: true, onData });
+            // What still failed after the second try.
+            st.failed = Math.min(failedBefore, failedTracks.size || st.failed);
+          }
         } else {
           const isSearch = src.id === 'search' || src.id === 'apple';
           const target = isSearch ? `https://music.youtube.com/search?q=${encodeURIComponent(src.id === 'apple' ? await appleToQuery(input) : input)}` : String(input).trim();
