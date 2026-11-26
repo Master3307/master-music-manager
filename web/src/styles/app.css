@@ -647,4 +647,8 @@ img { display: block; }
   .modal, .modal.wide { width: 100%; max-height: 92dvh; border-radius: 20px 20px 0 0; padding-bottom: env(safe-area-inset-bottom); }
 }
 /* Long press opens our menus; no system callout or text selection getting in the way. */
-@media (hover: none) { .app { -webkit-touch-callout: none; } .trow, .tile, .panel.row, .chip, .btn { -webkit-user-select: none; user-select: none; } }
+@media (hover: none) {
+  /* On touch screens the interface is not text to select: long press opens menus instead. Fields stay editable and selectable. */
+  html, body, .app { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  input, textarea, select, [contenteditable='true'], [contenteditable=''] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+}

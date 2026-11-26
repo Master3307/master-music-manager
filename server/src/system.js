@@ -17,6 +17,8 @@ import { merge as mergeScrobbles } from './scrobbles.js';
 import { aboutByName } from './artists.js';
 import { THEMES } from './themes.js';
 
+import { WebSocketServer } from 'ws';
+
 /** What the Navidrome plugin last reported per user and player. */
 export const PLUGIN_PLAYING = new Map();
 import { take } from './uploads.js';
@@ -266,6 +268,34 @@ export function register(app) {
   app.get('/api/jobs/:id/log', requireUser, (req, res) => res.type('text/plain').attachment(`job-${req.params.id}.log`).send(jobs.readLog(req.params.id)));
   app.post('/api/jobs/:id/cancel', requireUser, json((req) => ({ ok: jobs.cancel(req.params.id) })));
   app.delete('/api/jobs', requireUser, json(() => ({ removed: jobs.clearFinished() })));
+  // The same events over a WebSocket: browsers don't count an open WebSocket
+  // as "the page is still loading" (they do for EventSource). index.js hands
+  // upgrade requests to the app, so login and roles apply as for any route.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
+  app.get('/api/ws', requireUser, (req, res) => {
+    if (!req.wsHead) return res.status(426).json({ error: 'Use a WebSocket here' });
+    // Only our own pages may open it (no cross-site WebSocket hijacking).
+    const origin = req.get('origin');
+    try {
+      if (!origin || new URL(origin).host !== (req.get('x-forwarded-host') || req.get('host'))) return res.status(403).end();
+    } catch {
+      return res.status(403).end();
+    }
+    res.detachSocket?.(req.socket);
+    wss.handleUpgrade(req, req.socket, req.wsHead, (ws) => {
+      const send = (type, data) => ws.readyState === 1 && ws.send(JSON.stringify({ type, data }));
+      const offJobs = jobs.subscribe((e) => send(e.type, e));
+      const offLog = log.subscribe((e) => e.level !== 'debug' && send('applog', e));
+      const ping = setInterval(() => ws.readyState === 1 && ws.ping(), 25_000);
+      ws.on('close', () => {
+        clearInterval(ping);
+        offJobs();
+        offLog();
+      });
+      ws.on('message', () => {}); // nothing to receive
+    });
+  });
+
   app.get('/api/events', requireUser, (req, res) => {
     const send = sendSse(res);
     const offJobs = jobs.subscribe((e) => send(e.type, e));

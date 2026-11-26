@@ -1,3 +1,4 @@
+import http from 'node:http';
 // Master Music Manager: server entry point.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -123,6 +124,17 @@ const server = app.listen(PORT, HOST, () => {
   setTimeout(() => checkUpdate().catch(() => {}), 20_000);
   auth.announceSetupCode();
 });
+// WebSocket upgrades go through the app like any request (auth, roles,
+// guest rules); /api/ws then takes the socket over.
+server.on('upgrade', (req, socket, head) => {
+  if (!req.url.startsWith('/api/ws')) return socket.destroy();
+  req.wsHead = head;
+  const res = new http.ServerResponse(req);
+  res.assignSocket(socket);
+  res.on('finish', () => socket.destroy());
+  app(req, res);
+});
+
 server.requestTimeout = 0; // big uploads and archive downloads
 server.headersTimeout = 65_000;
 

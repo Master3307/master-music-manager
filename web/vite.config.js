@@ -9,7 +9,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:4545', changeOrigin: false },
+      '/api': { target: 'http://127.0.0.1:4545', changeOrigin: false, ws: true },
       '/share': 'http://127.0.0.1:4545',
       '/dav': 'http://127.0.0.1:4545',
     },

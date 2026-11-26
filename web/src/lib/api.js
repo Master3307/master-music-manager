@@ -112,21 +112,61 @@ function sendPart(url, blob, onLoaded, signal) {
   });
 }
 
-/** Live events: job progress, job logs, app log lines. Reconnects by itself. */
+/**
+ * Live events: job progress, job logs, app log lines. Reconnects by itself.
+ * A WebSocket first (an open WebSocket doesn't keep the browser's loading
+ * indicator going, an EventSource does); EventSource if a proxy blocks it.
+ */
 export function events(handlers) {
-  let es;
+  let conn = null;
   let closed = false;
   let retry;
-  const open = () => {
-    es = new EventSource('/api/events');
-    for (const [type, fn] of Object.entries(handlers)) es.addEventListener(type, (e) => fn(JSON.parse(e.data)));
+  let wsWorks = null; // null = not tried yet
+  let backoff = 1000;
+  const deliver = (type, data) => handlers[type]?.(data);
+  const again = () => {
+    if (closed) return;
+    retry = setTimeout(open, backoff);
+    backoff = Math.min(backoff * 2, 30_000);
+  };
+  const openSse = () => {
+    const es = new EventSource('/api/events');
+    conn = es;
+    for (const type of Object.keys(handlers)) es.addEventListener(type, (e) => deliver(type, JSON.parse(e.data)));
+    es.onopen = () => (backoff = 1000);
     es.onerror = () => {
       es.close();
-      if (!closed) retry = setTimeout(open, 3000);
+      again();
     };
   };
-  // A connection that opens before the page has finished loading keeps the
-  // browser's loading spinner turning forever: start it once the page is done.
+  const open = () => {
+    if (closed) return;
+    if (wsWorks === false || typeof WebSocket === 'undefined') return openSse();
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`);
+    conn = ws;
+    let opened = false;
+    ws.onopen = () => {
+      opened = true;
+      wsWorks = true;
+      backoff = 1000;
+    };
+    ws.onmessage = (m) => {
+      try {
+        const { type, data } = JSON.parse(m.data);
+        deliver(type, data);
+      } catch {}
+    };
+    ws.onclose = () => {
+      if (closed) return;
+      // Never got through (a proxy without WebSockets): use EventSource from now on.
+      if (!opened && wsWorks === null) {
+        wsWorks = false;
+        return openSse();
+      }
+      again();
+    };
+  };
+  // Start once the page has loaded, so it never counts as part of loading.
   let waiting = null;
   if (document.readyState === 'complete') retry = setTimeout(open, 0);
   else {
@@ -139,7 +179,7 @@ export function events(handlers) {
     closed = true;
     clearTimeout(retry);
     if (waiting) window.removeEventListener('load', waiting);
-    es?.close();
+    conn?.close();
   };
 }
 

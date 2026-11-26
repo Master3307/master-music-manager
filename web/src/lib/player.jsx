@@ -76,7 +76,8 @@ export function PlayerProvider({ children }) {
 
   if (!audio.current && typeof Audio !== 'undefined') {
     audio.current = new Audio();
-    audio.current.preload = 'auto';
+    // Only the length until you press play: no song downloads in the background while the page is open.
+    audio.current.preload = 'metadata';
     audio.current.crossOrigin = 'use-credentials';
   }
 

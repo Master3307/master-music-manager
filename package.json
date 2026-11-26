@@ -37,6 +37,7 @@
     "music-metadata": "^13.0.1",
     "otpauth": "^9.6.0",
     "tar": "^7.5.23",
+    "ws": "8.18.3",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
