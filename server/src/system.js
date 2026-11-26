@@ -129,7 +129,7 @@ async function installStartup(ctx, enable) {
 }
 
 // ---- backup ----
-const BACKUP_TABLES = ['settings', 'users', 'profiles', 'shares', 'scrobbles', 'local_playlists', 'artist_info', 'nodes', 'app_passwords', 'restore_points'];
+const BACKUP_TABLES = ['settings', 'users', 'profiles', 'shares', 'scrobbles', 'local_playlists', 'artist_info', 'nodes', 'app_passwords', 'restore_points', 'sync_groups'];
 
 function exportBackup({ passphrase, includeSecrets }) {
   const data = {};

@@ -82,6 +82,7 @@ async function call(n, pathname, { method = 'GET', body, raw = false, timeout, h
 }
 
 export const callNode = call;
+export { nodeAuth, modesOf };
 
 /** Middleware for /api/fed/*: identify the calling node by its key. */
 function nodeAuth(req, _res, next) {

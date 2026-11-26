@@ -23,6 +23,7 @@ import * as federation from './federation.js';
 import * as webdav from './webdav.js';
 import * as system from './system.js';
 import * as transfer from './transfer.js';
+import * as sync from './sync.js';
 import * as lookup from './lookup.js';
 import * as navidromeDb from './navidromeDb.js';
 import { checkUpdate } from './system.js';
@@ -84,6 +85,8 @@ federation.register(app);
 webdav.register(app);
 system.register(app);
 transfer.register(app);
+sync.register(app);
+sync.registerFed(app, federation.nodeAuth, federation.modesOf);
 lookup.register(app);
 navidromeDb.register(app);
 

@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useSearchParams } from 'react-router';
 import {
   Settings as Cog, Palette, Library, FolderTree, FileAudio, Download, Play, Share2, Shield, User, Network, Puzzle, Archive, ScrollText, RefreshCw, Plus, Trash2, Pencil, Wifi, WifiOff,
-  HardDrive, ExternalLink, Check, Copy as CopyIcon,
+  HardDrive, ExternalLink, Check, Copy as CopyIcon, ArrowLeftRight,
 } from 'lucide-react';
+import { SyncSettings } from './Sync.jsx';
 import { useApp } from '../../lib/app.jsx';
 import { get, post, del, patch } from '../../lib/api.js';
 import { previewDoc, resolvedMode } from '../../lib/theme.js';
@@ -26,6 +27,7 @@ const NAV = [
   ['privacy', 'Privacy & online', Shield],
   ['account', 'Account & security', User],
   ['instances', 'Linked instances', Network],
+  ['sync', 'Keep in sync', ArrowLeftRight],
   ['plugin', 'Navidrome plugin', Puzzle],
   ['backup', 'Backup', Archive],
   ['logs', 'Logs', ScrollText],
@@ -81,6 +83,7 @@ export default function Settings() {
           <Route path="privacy" element={<Privacy />} />
           <Route path="account" element={<Account />} />
           <Route path="instances" element={<Instances />} />
+          <Route path="sync" element={<SyncSettings />} />
           <Route path="plugin" element={<Plugin />} />
           <Route path="backup" element={<Backup />} />
           <Route path="logs" element={<Logs />} />

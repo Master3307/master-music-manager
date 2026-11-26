@@ -76,6 +76,7 @@ Needs Node 22+ and FFmpeg. Optional: spotDL (Spotify links), yt-dlp (YouTube and
 - Share songs, albums, artists, playlists and radio stations, publicly or with a key, with or without downloads, and with proper previews in Discord and chats. Navidrome’s own shares are listed too.
 - Listening stats and Wrapped cards. Import your history from Last.fm, ListenBrainz, Spotify, Rockbox logs, Navidrome or any CSV / JSON.
 - Several servers and folders. Several computers linked together: they share song lists, play each other’s songs, back each other up, and keep working when one is off.
+- Keep places completely in sync: two servers, folders or computers each end up with every song of the others (compared by sound, so nothing is copied twice), optionally with edits and removals following.
 - Accounts with roles (admin, user, visitor), two-step login, Discord login, logging in with your Navidrome / Jellyfin account, and a mode where anyone can listen but only you can change things.
 - Themes, your own CSS themes (with a header for name, author, version and an update address), sharing themes with a link, a simple player mode, light and dark.
 - WebDAV, backups, a full privacy mode (nothing leaves your network) and the `mmm` command.
