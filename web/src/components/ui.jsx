@@ -1,7 +1,7 @@
 import { cloneElement, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, CircleAlert, Info, Music2, Star, X, Check, Copy, Download, Disc3, ChevronDown } from 'lucide-react';
-import { useApp } from '../lib/app.jsx';
+import { useApp, useJob } from '../lib/app.jsx';
 import { get } from '../lib/api.js';
 import { coverUrl, cx, copy } from '../lib/util.js';
 
@@ -521,7 +521,8 @@ export const inlineJobs = new Set();
 const announceInline = () => window.dispatchEvent(new Event('mmm:inline-jobs'));
 
 /** A running job, right where it was started: bar, step, Stop; it keeps going if you leave the page. */
-export function JobProgress({ job: j, what, onDone }) {
+export function JobProgress({ job: given, what, onDone }) {
+  const j = useJob(given.id) || given; // keeps itself up to date even without live updates
   useEffect(() => {
     inlineJobs.add(j.id);
     announceInline();
@@ -563,6 +564,7 @@ export function JobDock() {
     return () => window.removeEventListener('mmm:inline-jobs', fn);
   }, []);
   const list = watched.map((id) => jobs[id]).filter((j) => j && !inlineJobs.has(j.id));
+  const missing = watched.filter((id) => !jobs[id]);
   // Finished ones stay a moment with a tick, then go.
   useEffect(() => {
     const done = list.filter((j) => !['queued', 'running'].includes(j.status));
@@ -570,13 +572,15 @@ export function JobDock() {
     const t = setTimeout(() => done.forEach((j) => unwatch(j.id)), 4000);
     return () => clearTimeout(t);
   }, [list.map((j) => `${j.id}:${j.status}`).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!list.length) return null;
+  if (!list.length) return missing.length ? missing.map((id) => <JobFetcher key={id} id={id} />) : null;
   return (
     <div className={cx('job-dock', small && 'small')} role="status" aria-live="polite">
       <button className="job-dock-head" onClick={() => setSmall(!small)} aria-expanded={!small}>
         <Spinner size={13} /> <span className="grow">{list.filter((j) => ['queued', 'running'].includes(j.status)).length || 'No'} running</span>
         <ChevronDown size={15} style={{ transform: small ? 'rotate(180deg)' : 'none' }} />
       </button>
+      {missing.map((id) => <JobFetcher key={id} id={id} />)}
+      {list.filter((j) => ['queued', 'running'].includes(j.status)).map((j) => <JobFetcher key={`f-${j.id}`} id={j.id} />)}
       {!small &&
         list.map((j) => {
           const live = ['queued', 'running'].includes(j.status);
@@ -594,4 +598,10 @@ export function JobDock() {
         })}
     </div>
   );
+}
+
+/** Invisible: keeps a watched job up to date when live updates don't bring it. */
+function JobFetcher({ id }) {
+  useJob(id);
+  return null;
 }

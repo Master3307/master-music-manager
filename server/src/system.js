@@ -296,6 +296,7 @@ export function register(app) {
     res.detachSocket?.(req.socket);
     wss.handleUpgrade(req, req.socket, req.wsHead, (ws) => {
       const send = (type, data) => ws.readyState === 1 && ws.send(JSON.stringify({ type, data }));
+      send('hello', { at: Date.now() }); // proves to the browser that messages get through
       const offJobs = jobs.subscribe((e) => send(e.type, e));
       const offLog = log.subscribe((e) => e.level !== 'debug' && send('applog', e));
       const ping = setInterval(() => ws.readyState === 1 && ws.ping(), 25_000);

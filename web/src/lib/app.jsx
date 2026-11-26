@@ -164,6 +164,8 @@ export function AppProvider({ children }) {
   }, [me]);
 
   /** Resolve when a job ends (for "do X, then refresh"). */
+  // A job fetched on its own (when live updates didn't bring it).
+  const putJob = useCallback((j) => j?.id && setJobs((x) => (x[j.id]?.status === j.status && x[j.id]?.progress === j.progress && x[j.id]?.detail === j.detail ? x : { ...x, [j.id]: j })), []);
   // Jobs started from the interface: the dock at the bottom shows their progress.
   const [watched, setWatched] = useState([]);
   const unwatch = useCallback((id) => setWatched((w) => w.filter((x) => x !== id)), []);
@@ -223,7 +225,7 @@ export function AppProvider({ children }) {
 
   const value = {
     ready, me, loadMe, settings, setSettings, loadSettings, saveSetting, resetMyLook, profiles, loadProfiles, profile, pid: profile?.id, setPid, caps,
-    toast, fail, toasts, jobs, logs, afterJob, watched, unwatch, themes, fields, update, setUpdate,
+    toast, fail, toasts, jobs, logs, afterJob, watched, unwatch, putJob, themes, fields, update, setUpdate,
     isAdmin: me?.perms?.includes('manage') || false,
     can: (perm) => Boolean(me?.perms?.includes(perm)),
     listenOnly: Boolean(me?.listenOnly),
@@ -248,4 +250,35 @@ export function useLoad(fn, deps = []) {
     reload();
   }, [reload]);
   return { ...state, reload, setData: (d) => setState((s) => ({ ...s, data: typeof d === 'function' ? d(s.data) : d })) };
+}
+
+/**
+ * One job, always up to date: from the live updates when they come, else
+ * asked for every 2 s until it's finished (old jobs after a reload, or a
+ * connection that doesn't pass live updates).
+ */
+export function useJob(id) {
+  const { jobs, putJob } = useApp();
+  const j = id ? jobs[id] : null;
+  const live = !j || ['queued', 'running'].includes(j.status);
+  const seen = useRef({ at: 0, key: '' });
+  const key = j ? `${j.status}:${j.progress}:${j.detail}` : '';
+  if (key !== seen.current.key) seen.current = { at: Date.now(), key };
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    if (!id || !live) return;
+    const tick = async () => {
+      if (j && Date.now() - seen.current.at < 2500) return; // live updates are arriving
+      try {
+        putJob(await get(`jobs/${id}`, { tail: 1 }));
+      } catch (e) {
+        if (/404|not found/i.test(e.message)) setGone(true);
+      }
+    };
+    tick();
+    const t = setInterval(tick, 2000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, live]);
+  return gone ? { id, status: 'gone', title: '', detail: '' } : j;
 }

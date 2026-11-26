@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Download, Upload, FolderUp, Link2, HardDrive, Check, CircleAlert, Wrench, RefreshCw, Inbox as InboxIcon, X, FolderOpen } from 'lucide-react';
-import { useApp, useLoad } from '../lib/app.jsx';
+import { useApp, useLoad, useJob } from '../lib/app.jsx';
 import { get, post, uploadFile } from '../lib/api.js';
 import { fmtSize, cx, plural } from '../lib/util.js';
 import { Field, Notice, Spinner, Toggle, Progress, Segmented, JobDetails } from '../components/ui.jsx';
@@ -182,7 +182,7 @@ export default function Add() {
         </div>
         {downloads.length > 0 && (
           <div className="col dl-cards" style={{ gap: 8, marginTop: 14 }}>
-            {downloads.map((id) => <DownloadCard key={id} job={jobs[id]} />)}
+            {downloads.map((id) => <DownloadCard key={id} id={id} />)}
             {downloads.some((id) => jobs[id] && !['queued', 'running'].includes(jobs[id].status)) && (
               <button className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={add.forgetJobs}>Clear finished</button>
             )}
@@ -288,8 +288,10 @@ export default function Add() {
 export { useMemo };
 
 /** One thing you asked to download: what it is, what's happening right now, and what came of it. */
-function DownloadCard({ job: j }) {
+function DownloadCard({ id }) {
+  const j = useJob(id); // live updates, or asked for until it's done
   const [open, setOpen] = useState(false);
+  if (j?.status === 'gone') return null;
   if (!j) {
     return (
       <div className="dl-card">

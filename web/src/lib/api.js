@@ -145,12 +145,25 @@ export function events(handlers) {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`);
     conn = ws;
     let opened = false;
+    let heard = false;
     ws.onopen = () => {
       opened = true;
-      wsWorks = true;
       backoff = 1000;
+      // Some proxies open a WebSocket but pass nothing through: no hello in 5 s → EventSource.
+      setTimeout(() => {
+        if (heard || closed || conn !== ws) return;
+        console.warn('Master Music Manager: live updates don’t get through the WebSocket here; using EventSource.');
+        wsWorks = false;
+        ws.onclose = null;
+        ws.close();
+        openSse();
+      }, 5000);
     };
     ws.onmessage = (m) => {
+      if (!heard) {
+        heard = true;
+        wsWorks = true;
+      }
       try {
         const { type, data } = JSON.parse(m.data);
         deliver(type, data);
