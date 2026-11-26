@@ -24,7 +24,7 @@ function useDetectLines(text) {
 }
 
 export default function Add() {
-  const { profiles, pid, settings, jobs, fail, toast, isAdmin } = useApp();
+  const { profiles, pid, settings, jobs, fail, toast, isAdmin, loadProfiles } = useApp();
   const [target, setTarget] = useState(pid);
   const add = useAdding();
   const text = add.draft;
@@ -37,6 +37,7 @@ export default function Add() {
   const [over, setOver] = useState(false);
   const [path, setPath] = useState('');
   const [move, setMove] = useState(false);
+  const [how, setHow] = useState('keep'); // keep | copy | move
   const [picker, setPicker] = useState(false);
   const [url, setUrl] = useState('');
   const tools = useLoad(() => get('downloads/tools'), []);
@@ -86,6 +87,23 @@ export default function Add() {
 
   const fromPath = async () => {
     try {
+      if (how === 'keep') {
+        // The files stay where they are: a folder already in a library is just read again,
+        // anything else becomes a library of its own.
+        const clean = path.trim().replace(/\/+$/, '') || '/';
+        const inside = profiles.find((p) => p.localPath && (clean === p.localPath.replace(/\/+$/, '') || clean.startsWith(`${p.localPath.replace(/\/+$/, '')}/`)));
+        if (inside) {
+          const r = await post(`p/${inside.id}/scan`, { full: false });
+          setMine((m) => [r.job, ...m]);
+          toast(`That folder is part of ${inside.name}. Reading it…`);
+          return;
+        }
+        const name = clean.split('/').filter(Boolean).pop() || 'Music';
+        const p = await post('profiles', { kind: 'local', name, localPath: clean });
+        await loadProfiles();
+        toast(`Added “${p.name}” as a library. The files stay in ${clean}.`, { kind: 'ok' });
+        return;
+      }
       const r = await post('inbox/from-path', { path, move, profileId: target });
       setMine((m) => [r.job, ...m]);
       toast('Reading the folder…');
@@ -183,10 +201,13 @@ export default function Add() {
               <button className="btn icon" onClick={() => setPicker(true)} aria-label="Browse"><FolderOpen /></button>
             </div>
             <div className="row" style={{ marginTop: 10 }}>
-              <Segmented value={move ? 'move' : 'copy'} onChange={(v) => setMove(v === 'move')} options={[{ value: 'copy', label: 'Copy' }, { value: 'move', label: 'Move' }]} />
+              <Segmented value={how} onChange={(v) => { setHow(v); setMove(v === 'move'); }} options={[{ value: 'keep', label: 'Leave them there' }, { value: 'copy', label: 'Copy in' }, { value: 'move', label: 'Move in' }]} />
               <span className="grow" />
-              <button className="btn primary" onClick={fromPath} disabled={!path}>Read folder</button>
+              <button className="btn primary" onClick={fromPath} disabled={!path}>{how === 'keep' ? 'Add folder' : 'Read folder'}</button>
             </div>
+            <p className="faint" style={{ margin: '8px 0 0', fontSize: 12.5 }}>
+              {how === 'keep' ? 'The files stay where they are; the folder becomes a library you can switch to at the top.' : how === 'copy' ? 'Copies go through Check & import into your library; the originals stay.' : 'They go through Check & import into your library and leave this folder.'}
+            </p>
           </section>
         )}
         <section className="panel">
