@@ -10,7 +10,7 @@ import { SEPARATORS } from './naming.js';
 import { getProfile, canUse } from '../services/index.js';
 import { requireUser, requireAdmin } from '../auth.js';
 import { httpError, json, str, bool } from '../lib/http.js';
-import { audit } from '../db.js';
+import { db, audit } from '../db.js';
 import { compile, sorter, parseSort } from './query.js';
 import { online } from '../settings.js';
 import { safeFetch } from '../lib/net.js';
@@ -86,6 +86,18 @@ export function register(app) {
   );
 
   app.get('/api/p/:pid/stats', requireUser, json((req) => lib.stats(profileOf(req).id)));
+
+  // A song from the music server → its file here (for "Edit" on songs played through the server).
+  app.get(
+    '/api/p/:pid/by-remote/:rid',
+    requireUser,
+    json((req) => {
+      const p = profileOf(req);
+      const r = db.prepare('SELECT id FROM tracks WHERE profile_id = ? AND remote_id = ?').get(p.id, String(req.params.rid));
+      if (!r) throw httpError(404, 'This song isn’t in the linked folder, so it can’t be edited here');
+      return { id: r.id };
+    }),
+  );
 
   app.get(
     '/api/p/:pid/tracks/:id',

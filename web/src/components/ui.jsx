@@ -190,16 +190,20 @@ export function ConfirmProvider({ children }) {
 // ---- context menus ----
 // Rule for the whole app: right click opens our menu; a second right click on
 // (almost) the same spot while it is open gives the browser's own menu.
-let openMenu = null; // { x, y, close }
+// The press of that second click (mousedown) already closes our menu, so the
+// spot is remembered for a few seconds rather than only while it's open.
+let lastMenu = null; // { x, y, at, close }
 if (typeof window !== 'undefined' && !window.__mmmCtx) {
   window.__mmmCtx = true;
   window.addEventListener(
     'contextmenu',
     (e) => {
-      if (openMenu && Math.abs(e.clientX - openMenu.x) <= 6 && Math.abs(e.clientY - openMenu.y) <= 6) {
+      if (!e.isTrusted) return; // a long press we turned into a right click
+      const m = lastMenu;
+      if (m && Date.now() - m.at < 4000 && Math.abs(e.clientX - m.x) <= 8 && Math.abs(e.clientY - m.y) <= 8) {
         e.stopImmediatePropagation(); // our handlers don't run, the native menu shows
-        openMenu.close();
-        openMenu = null;
+        m.close?.();
+        lastMenu = null;
       }
     },
     true,
@@ -221,9 +225,13 @@ export function Menu({ at, onClose, children, align = 'left' }) {
     setPos({ left: Math.max(8, left), top, opacity: 1 });
   }, [at, align]);
   useEffect(() => {
-    openMenu = { x: at.x, y: at.y, close: onClose };
+    lastMenu = { x: at.x, y: at.y, at: Date.now(), close: onClose };
     const close = (e) => !ref.current?.contains(e.target) && onClose();
-    const esc = (e) => e.key === 'Escape' && onClose();
+    const esc = (e) => {
+      if (e.key !== 'Escape') return;
+      lastMenu = null;
+      onClose();
+    };
     const t = setTimeout(() => window.addEventListener('mousedown', close), 0);
     window.addEventListener('keydown', esc);
     window.addEventListener('blur', onClose);
@@ -231,7 +239,6 @@ export function Menu({ at, onClose, children, align = 'left' }) {
     document.querySelector('.content')?.addEventListener('scroll', onClose, { passive: true });
     return () => {
       clearTimeout(t);
-      if (openMenu?.close === onClose) openMenu = null;
       window.removeEventListener('mousedown', close);
       window.removeEventListener('keydown', esc);
       window.removeEventListener('blur', onClose);
@@ -252,7 +259,7 @@ export function Menu({ at, onClose, children, align = 'left' }) {
     }
   };
   return createPortal(
-    <div ref={ref} className="popover" style={{ position: 'fixed', ...pos }} role="menu" onKeyDown={onKey} onContextMenu={(e) => e.preventDefault()} onClick={(e) => e.target.closest('.menu-item') && !e.target.closest('[data-keep]') && onClose()}>
+    <div ref={ref} className="popover" style={{ position: 'fixed', ...pos }} role="menu" onKeyDown={onKey} onContextMenu={(e) => e.preventDefault()} onClick={(e) => { if (e.target.closest('.menu-item') && !e.target.closest('[data-keep]')) { lastMenu = null; onClose(); } }}>
       {children}
     </div>,
     document.body,
