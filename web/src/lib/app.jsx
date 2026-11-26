@@ -120,18 +120,47 @@ export function AppProvider({ children }) {
     get('jobs', { limit: 50 })
       .then((list) => setJobs(Object.fromEntries(list.map((j) => [j.id, j]))))
       .catch(() => {});
-    return events({
+    // A job reading 2000 files sends thousands of log lines and progress
+    // updates; every state change redraws the whole app, so they are
+    // collected and applied at most four times a second.
+    const batch = { jobs: {}, logs: {}, timer: null };
+    const flush = () => {
+      batch.timer = null;
+      const jobsNow = batch.jobs;
+      const logsNow = batch.logs;
+      batch.jobs = {};
+      batch.logs = {};
+      if (Object.keys(jobsNow).length) setJobs((x) => ({ ...x, ...jobsNow }));
+      if (Object.keys(logsNow).length)
+        setLogs((x) => {
+          const next = { ...x };
+          for (const [id, text] of Object.entries(logsNow)) next[id] = ((next[id] || '') + text).slice(-200_000);
+          return next;
+        });
+    };
+    const later = () => {
+      if (!batch.timer) batch.timer = setTimeout(flush, 250);
+    };
+    const stop = events({
       job: (e) => {
-        setJobs((x) => ({ ...x, [e.job.id]: e.job }));
+        batch.jobs[e.job.id] = e.job;
         const w = jobWaiters.current.get(e.job.id);
         if (w && !['queued', 'running'].includes(e.job.status)) {
           jobWaiters.current.delete(e.job.id);
+          flush(); // finished: show it right away
           w(e.job);
-        }
+        } else later();
       },
-      log: (e) => setLogs((x) => ({ ...x, [e.id]: ((x[e.id] || '') + e.text).slice(-200_000) })),
+      log: (e) => {
+        batch.logs[e.id] = (batch.logs[e.id] || '') + e.text;
+        later();
+      },
       cleared: () => setJobs((x) => Object.fromEntries(Object.entries(x).filter(([, j]) => ['queued', 'running'].includes(j.status)))),
     });
+    return () => {
+      clearTimeout(batch.timer);
+      stop?.();
+    };
   }, [me]);
 
   /** Resolve when a job ends (for "do X, then refresh"). */

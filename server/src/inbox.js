@@ -152,6 +152,49 @@ async function fetchCover(id, url) {
   setCover(id, r.body, r.type, 'url');
 }
 
+// Reading a cover means parsing the whole song (or running FFmpeg for a video).
+// Do it once per song, keep the result next to it, and never more than two at
+// a time: a list of 2000 songs must not make 2000 reads at once.
+let coverSlots = 2;
+const coverQueue = [];
+const coverSlot = () =>
+  coverSlots > 0
+    ? (coverSlots--, Promise.resolve())
+    : new Promise((r) => coverQueue.push(r));
+const freeCoverSlot = () => (coverQueue.length ? coverQueue.shift()() : coverSlots++);
+const coverReads = new Map();
+async function embeddedCover(row) {
+  const dir = path.dirname(row.file);
+  for (const ext of ['jpg', 'png', 'webp', 'gif']) if (fs.existsSync(path.join(dir, `embedded.${ext}`))) return path.join(dir, `embedded.${ext}`);
+  if (fs.existsSync(path.join(dir, 'embedded.none'))) return null;
+  if (coverReads.has(row.id)) return coverReads.get(row.id);
+  const work = (async () => {
+    await coverSlot();
+    try {
+      let data = null;
+      let ext = 'jpg';
+      const c = await tags.readCover(row.file).catch(() => null);
+      if (c) {
+        data = c.data;
+        ext = /png/.test(c.format) ? 'png' : /webp/.test(c.format) ? 'webp' : /gif/.test(c.format) ? 'gif' : 'jpg';
+      } else if (JSON.parse(row.info).video) data = await ff.stillFrame(row.file).catch(() => null);
+      if (!fs.existsSync(dir)) return null; // thrown away meanwhile
+      if (!data) {
+        fs.writeFileSync(path.join(dir, 'embedded.none'), '');
+        return null;
+      }
+      const file = path.join(dir, `embedded.${ext}`);
+      fs.writeFileSync(file, data);
+      return file;
+    } finally {
+      freeCoverSlot();
+      coverReads.delete(row.id);
+    }
+  })();
+  coverReads.set(row.id, work);
+  return work;
+}
+
 export function setCover(id, data, format, from = 'upload') {
   const row = db.prepare('SELECT * FROM inbox WHERE id = ?').get(id);
   if (!row) throw httpError(404, 'Not in the inbox');
@@ -454,11 +497,11 @@ export function register(app) {
       const row = db.prepare('SELECT * FROM inbox WHERE id = ?').get(req.params.id);
       if (!row) return res.status(404).end();
       const meta = JSON.parse(row.meta);
+      // The address carries ?v=…, so the browser may keep the picture.
+      res.set('Cache-Control', 'private, max-age=86400');
       if (meta.cover?.file && fs.existsSync(meta.cover.file)) return res.sendFile(meta.cover.file);
-      const c = await tags.readCover(row.file).catch(() => null);
-      if (c) return res.type(c.format).send(c.data);
-      const still = JSON.parse(row.info).video ? await ff.stillFrame(row.file).catch(() => null) : null;
-      if (still) return res.type('image/jpeg').send(still);
+      const found = await embeddedCover(row);
+      if (found) return res.sendFile(found);
       res.status(404).end();
     } catch (e) {
       next(e);

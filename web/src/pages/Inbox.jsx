@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Link } from 'react-router';
 import { Inbox as InboxIcon, Check, Trash2, Play, Pause, Image, Fingerprint, CircleAlert, Film, Wand2, Copy } from 'lucide-react';
 import { useApp, useLoad } from '../lib/app.jsx';
@@ -23,7 +24,11 @@ export function InboxPanel({ embedded }) {
   const [bulk, setBulk] = useState(null);
   const [askMisc, setAskMisc] = useState(null);
   const [v, setV] = useState(0);
-  const items = (data || []).filter((i) => i.status !== 'imported');
+  const items = useMemo(() => (data || []).filter((i) => i.status !== 'imported'), [data]);
+  // Only the rows on screen are drawn (and only their covers load): a list of
+  // thousands of songs stays as quick as a list of ten.
+  const scroller = useRef(null);
+  const virt = useVirtualizer({ count: items.length, getScrollElement: () => scroller.current, estimateSize: () => 64, overscan: 8, getItemKey: (i) => items[i].id });
   const libs = profiles.filter((p) => p.localPath);
   const audioRef = useMemo(() => new Audio(), []);
 
@@ -96,16 +101,18 @@ export function InboxPanel({ embedded }) {
               </>
             )}
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div ref={scroller} style={{ overflow: 'auto', maxHeight: 'max(420px, calc(100vh - 240px))', contain: 'strict', height: Math.min(items.length * 64 + 44, 4000) }}>
             <div style={{ minWidth: 980 }}>
-              <div className="thead" style={{ gridTemplateColumns: `32px 56px ${COLS.map((c) => `${c[2]}px`).join(' ')} minmax(160px, 1fr) 120px`, position: 'static' }}>
+              <div className="thead" style={{ gridTemplateColumns: `32px 56px ${COLS.map((c) => `${c[2]}px`).join(' ')} minmax(160px, 1fr) 120px`, position: 'sticky', top: 0, zIndex: 3, background: 'var(--bg)' }}>
                 <div /><div />{COLS.map((c) => <div key={c[0]}>{c[1]}</div>)}<div>Will be</div><div />
               </div>
-              {items.map((it) => {
-                const t = it.meta.tags;
-                const plan = it.info.plan || {};
-                return (
-                  <div key={it.id} className={cx('trow', sel.has(it.id) && 'sel')} style={{ position: 'relative', gridTemplateColumns: `32px 56px ${COLS.map((c) => `${c[2]}px`).join(' ')} minmax(160px, 1fr) 120px`, height: 'auto', minHeight: 60, padding: '4px 0' }}>
+              <div style={{ position: 'relative', height: virt.getTotalSize() }}>
+                {virt.getVirtualItems().map(({ index, start }) => {
+                  const it = items[index];
+                  const t = it.meta.tags;
+                  const plan = it.info.plan || {};
+                  return (
+                  <div key={it.id} ref={virt.measureElement} data-index={index} className={cx('trow', sel.has(it.id) && 'sel')} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${start}px)`, gridTemplateColumns: `32px 56px ${COLS.map((c) => `${c[2]}px`).join(' ')} minmax(160px, 1fr) 120px`, height: 'auto', minHeight: 60, padding: '4px 0' }}>
                     <div><input type="checkbox" checked={sel.has(it.id)} onChange={() => { const n = new Set(sel); n.has(it.id) ? n.delete(it.id) : n.add(it.id); setSel(n); }} aria-label="Select" /></div>
                     <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setCover(it)} title="Change the cover">
                       <img src={`/api/inbox/${it.id}/cover?v=${v}`} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover', background: 'var(--surface-2)' }} onError={(e) => (e.currentTarget.style.opacity = 0.15)} />
@@ -136,8 +143,9 @@ export function InboxPanel({ embedded }) {
                       <button className="btn icon small ghost" onClick={() => remove([it.id])} aria-label="Throw away"><Trash2 /></button>
                     </div>
                   </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </>
