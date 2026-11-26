@@ -337,6 +337,10 @@ function LibrarySettings() {
         <Field label="Smart playlist folder" hint="Inside the library."><input className="input mono" value={l.playlistsFolder || ''} onChange={(e) => setL({ playlistsFolder: e.target.value })} /></Field>
         <Toggle checked={l.rescanAfterChanges} onChange={(v) => setL({ rescanAfterChanges: v })} label="Tell the server to rescan after changes" description="A quick rescan a few seconds after the last edit." />
       </Section>
+      <Section title="Your music disk" description="Reading thousands of files at once makes a spinning hard disk seek constantly (the grinding noise). The gentle way reads one file at a time in the order they lie on the disk, and pauses while music plays.">
+        <Segmented value={l.diskMode || 'auto'} onChange={(v) => setL({ diskMode: v })} options={[{ value: 'auto', label: 'Find out by itself' }, { value: 'hdd', label: 'Spinning disk (gentle)' }, { value: 'ssd', label: 'SSD (fast)' }]} />
+        <span className="faint" style={{ fontSize: 12.5 }}>“Find out by itself” is gentle unless it can tell for sure the disk is an SSD.</span>
+      </Section>
       <Section title="Several artists" description="How “Artist feat. Someone & Another” is written in the tags.">
         <Toggle checked={l.splitArtists} onChange={(v) => setL({ splitArtists: v })} label="Split artists automatically" />
         <Field label="Write them like this">

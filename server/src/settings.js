@@ -43,6 +43,7 @@ export const DEFAULTS = {
     illegalChars: 'replace', // replace | remove
     maxPathPart: 120,
     rescanAfterChanges: true,
+    diskMode: 'auto', // auto | hdd | ssd: how hard to read the music disk
     playlistsFolder: 'Playlists',
   },
   convert: {

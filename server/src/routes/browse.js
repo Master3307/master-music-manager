@@ -17,6 +17,7 @@ import { sha256, uuid } from '../lib/crypto.js';
 import * as tags from '../library/tags.js';
 import { compile } from '../library/query.js';
 import { splitArtists } from '../library/naming.js';
+import { streamStarted } from '../lib/disk.js';
 import { log } from '../lib/log.js';
 
 function prof(req) {
@@ -569,6 +570,9 @@ export function register(app) {
 
   // ---- streaming ----
   app.get('/api/p/:pid/stream/:key', requireUser, async (req, res, next) => {
+    // Library reads step back while this plays.
+    const done = streamStarted();
+    res.on('close', done);
     try {
       const p = prof(req);
       await stream(p, req.params.key, req, res);

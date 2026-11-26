@@ -26,10 +26,19 @@ export async function audioHash(file) {
 }
 
 export async function ensureAudioHashes(profile, ctx) {
-  const todo = db.prepare('SELECT id, path FROM tracks WHERE profile_id = ? AND audio_hash IS NULL').all(profile.id);
+  const { readPlan, breathe, inDiskOrder } = await import('../lib/disk.js');
+  const plan = readPlan(profile.local_path);
+  let todo = db.prepare('SELECT id, path FROM tracks WHERE profile_id = ? AND audio_hash IS NULL').all(profile.id);
+  if (plan.gentle && todo.length) {
+    // Fingerprinting reads whole files: front to back on the disk, one at a time.
+    ctx?.log?.(`Fingerprinting ${todo.length} files gently (spinning disk).`);
+    const byAbs = new Map(todo.map((t) => [lib.absPath(profile, t.path), t]));
+    todo = (await inDiskOrder([...byAbs.keys()])).map((f) => byAbs.get(f));
+  }
   let n = 0;
   for (const t of todo) {
     ctx?.check();
+    await breathe(plan);
     try {
       db.prepare('UPDATE tracks SET audio_hash = ? WHERE id = ?').run(await audioHash(lib.absPath(profile, t.path)), t.id);
     } catch {}

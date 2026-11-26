@@ -13,6 +13,7 @@ import { targetPath, normalizeArtistTags } from './naming.js';
 import { compile, sorter, parseSort } from './query.js';
 import { log } from '../lib/log.js';
 import { uuid } from '../lib/crypto.js';
+import { readPlan, breathe, inDiskOrder } from '../lib/disk.js';
 
 export const MEDIA_EXT = new Set(['mp3', 'flac', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'wav', 'wv', 'ape', 'wma', 'aif', 'aiff', 'alac', 'dsf', 'dff', 'mpc', 'm4b', 'mka', 'tta', 'caf']);
 export const VIDEO_EXT = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'flv', 'm4v', 'wmv', 'ts', 'mpg', 'mpeg', '3gp']);
@@ -188,9 +189,15 @@ export function scan(profile, { full = false, userId } = {}) {
       if (!profile.local_path) throw new Error('No folder is linked to this profile');
       ctx.log(`Scanning ${profile.local_path} (${full ? 'every file' : 'new and changed files'})`);
       const known = new Map(db.prepare('SELECT id, path, size, mtime, hash FROM tracks WHERE profile_id = ?').all(profile.id).map((r) => [r.path, r]));
-      const files = [];
+      let files = [];
       for await (const f of walk(profile.local_path, profile.local_path)) files.push(f);
       ctx.log(`${files.length} media files found`);
+      const plan = readPlan(profile.local_path);
+      if (plan.gentle) {
+        ctx.log(`${plan.detected === 'hdd' ? 'Spinning disk' : 'Disk type unknown, so treating it like a spinning disk'}: reading one file at a time in the order they lie on the disk, and pausing while music plays. Slower, but quiet and easy on the drive. (Settings → Library & naming → Disk)`);
+        // Only new / changed files are read; the rest is just a quick look at their size and date.
+        files = await inDiskOrder(files);
+      }
       const seen = new Set();
       let changed = 0;
       let failed = 0;
@@ -229,9 +236,10 @@ export function scan(profile, { full = false, userId } = {}) {
             ctx.log(`! ${rel}: ${e.message}`);
           }
           if (i % 50 === 0) ctx.progress(i / files.length, `${i} / ${files.length} files`);
+          await breathe(plan);
         }
       };
-      await Promise.all(Array.from({ length: 6 }, worker));
+      await Promise.all(Array.from({ length: plan.workers }, worker));
       flush();
       const gone = [...known.keys()].filter((p) => !seen.has(p));
       if (gone.length) {
@@ -325,10 +333,17 @@ export async function hashFile(file) {
 }
 
 export async function ensureHashes(profile, ctx) {
-  const missing = all(profile.id).filter((t) => !t.hash);
+  const plan = readPlan(profile.local_path);
+  let missing = all(profile.id).filter((t) => !t.hash);
+  if (plan.gentle) {
+    const order = await inDiskOrder(missing.map((t) => absPath(profile, t.path)));
+    const byAbs = new Map(missing.map((t) => [absPath(profile, t.path), t]));
+    missing = order.map((f) => byAbs.get(f));
+  }
   let done = 0;
   for (const t of missing) {
     ctx?.check();
+    await breathe(plan);
     try {
       const h = await hashFile(absPath(profile, t.path));
       db.prepare('UPDATE tracks SET hash = ? WHERE id = ?').run(h, t.id);
