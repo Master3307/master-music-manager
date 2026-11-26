@@ -6,6 +6,7 @@ import { get, post, put, del, patch, api, download, uploadFile } from '../../lib
 import { ago, copy, cx, fmtSize, date } from '../../lib/util.js';
 import { Field, Toggle, Notice, Segmented, Modal, Spinner, CopyField, JobDetails, useConfirm, Empty } from '../../components/ui.jsx';
 import { Section, useSection } from './Settings.jsx';
+import { ImageEditor } from '../../components/ImageEditor.jsx';
 
 export function Account() {
   const { me, isAdmin, fail, toast, loadMe } = useApp();
@@ -19,6 +20,7 @@ export function Account() {
   const [auth, setAuth] = useSection('auth');
   const users = useLoad(() => (isAdmin && me?.user ? get('users') : []), [isAdmin, me]);
   const [newUser, setNewUser] = useState(null);
+  const [pic, setPic] = useState(false);
   const startTotp = async () => {
     const r = await post('account/totp/start');
     setTotp({ ...r, qr: await QRCode.toDataURL(r.uri, { margin: 1, width: 220 }), code: '' });
@@ -35,6 +37,16 @@ export function Account() {
       {me?.user && (
         <>
           <Section title={`Signed in as ${me.user.displayName}`} description={`Username ${me.user.username} · ${me.user.role === 'admin' ? 'admin' : 'member'} · ${me.user.provider === 'local' ? 'local account' : `logs in with ${me.user.provider}`}`}>
+            <div className="row" style={{ gap: 14 }}>
+              <span className="avatar-big" aria-hidden="true">{me.user.avatar ? <img src={me.user.avatar} alt="" /> : (me.user.displayName || '?')[0].toUpperCase()}</span>
+              <div className="col" style={{ gap: 6 }}>
+                <b style={{ fontSize: 13.5 }}>Profile picture</b>
+                <div className="row wrap" style={{ gap: 6 }}>
+                  <button className="btn small" onClick={() => setPic(true)}>{me.user.ownAvatar ? 'Change' : 'Add a picture'}</button>
+                  {me.user.ownAvatar && <button className="btn small ghost" onClick={() => del('account/avatar').then(loadMe, fail)}>{me.user.provider === 'discord' ? 'Use my Discord picture' : 'Remove'}</button>}
+                </div>
+              </div>
+            </div>
             {me.user.provider === 'local' && (
               <div className="fields two">
                 <Field label="Current password"><input className="input" type="password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} autoComplete="current-password" /></Field>
@@ -158,6 +170,20 @@ export function Account() {
           <Segmented value={newUser.role} onChange={(v) => setNewUser({ ...newUser, role: v })} options={[{ value: 'admin', label: 'Admin' }, { value: 'user', label: 'User' }, { value: 'visitor', label: 'Visitor' }]} />
           <span className="faint" style={{ fontSize: 12.5 }}>{me?.roles?.[newUser.role]}</span>
         </Modal>
+      )}
+      {pic && (
+        <ImageEditor
+          title="Your profile picture"
+          allowAnimated={false}
+          initialUrl={me?.user?.ownAvatar ? me.user.avatar : undefined}
+          onClose={() => setPic(false)}
+          onSave={async (blob) => {
+            await api('account/avatar', { method: 'PUT', body: blob, headers: { 'Content-Type': blob.type || 'image/png' } });
+            setPic(false);
+            await loadMe();
+            toast('Picture saved', { kind: 'ok' });
+          }}
+        />
       )}
     </>
   );

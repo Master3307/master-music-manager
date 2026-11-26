@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS audit (
 // Additive column migrations (old databases get them, new ones already match).
 for (const [table, col, def] of [
   ['users', 'perms', "TEXT NOT NULL DEFAULT '[]'"],
+  ['users', 'custom_avatar', 'TEXT'], // own picture, a small WebP data URL (so backups carry it)
 ]) {
   if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
 }

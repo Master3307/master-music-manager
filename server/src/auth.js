@@ -9,6 +9,7 @@
 // Mutations need the X-MMM header (forces a CORS preflight we never allow) and
 // a same-site Origin.
 import crypto from 'node:crypto';
+import express from 'express';
 import { TOTP, Secret } from 'otpauth';
 import { db, now, audit } from './db.js';
 import * as settings from './settings.js';
@@ -31,7 +32,8 @@ function publicUser(u) {
     displayName: u.display_name || u.username,
     role: u.role,
     provider: u.provider,
-    avatar: u.avatar,
+    avatar: u.custom_avatar || u.avatar,
+    ownAvatar: Boolean(u.custom_avatar),
     totp: Boolean(u.totp_secret),
     hasPassword: Boolean(u.password_hash),
     prefs: JSON.parse(u.prefs || '{}'),
@@ -512,6 +514,36 @@ export function register(app, { services }) {
       if (!checkTotp(u, req.body.code)) throw httpError(401, 'That code is not right');
       db.prepare('UPDATE users SET totp_secret = NULL WHERE id = ?').run(u.id);
       audit(u.id, 'totp.disable');
+      return { ok: true };
+    }),
+  );
+  // Your own profile picture: cropped square and made small on the server.
+  app.put(
+    '/api/account/avatar',
+    requireUser,
+    express.raw({ type: ['image/*', 'application/octet-stream'], limit: '15mb' }),
+    json(async (req) => {
+      if (req.user.anonymous) throw httpError(400, 'Log in to set a picture');
+      if (!Buffer.isBuffer(req.body) || !req.body.length) throw httpError(400, 'Send a picture');
+      const { run } = await import('./media/ffmpeg.js');
+      let out;
+      try {
+        ({ stdout: out } = await run('ffmpeg', ['-v', 'error', '-i', 'pipe:0', '-vf', 'scale=192:192:force_original_aspect_ratio=increase,crop=192:192', '-frames:v', '1', '-c:v', 'libwebp', '-quality', '82', '-f', 'webp', 'pipe:1'], { input: req.body, binary: true }));
+      } catch {
+        throw httpError(400, 'That doesn’t look like a picture');
+      }
+      if (!out?.length) throw httpError(400, 'That doesn’t look like a picture');
+      const url = `data:image/webp;base64,${out.toString('base64')}`;
+      db.prepare('UPDATE users SET custom_avatar = ? WHERE id = ?').run(url, req.user.id);
+      audit(req.user.id, 'account.avatar', {});
+      return { avatar: url };
+    }),
+  );
+  app.delete(
+    '/api/account/avatar',
+    requireUser,
+    json((req) => {
+      if (!req.user.anonymous) db.prepare('UPDATE users SET custom_avatar = NULL WHERE id = ?').run(req.user.id);
       return { ok: true };
     }),
   );
