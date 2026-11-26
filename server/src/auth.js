@@ -321,6 +321,7 @@ export function register(app, { services }) {
         now(),
       );
       if (req.body.requireLogin !== false) settings.set('auth', { required: true });
+      fs.rmSync(SETUP_FILE, { force: true }); // used up
       audit(id, 'user.create-admin', { username });
       createSession(req, res, { id });
       return { ok: true };
