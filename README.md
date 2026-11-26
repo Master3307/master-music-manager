@@ -80,6 +80,7 @@ Needs Node 22+ and FFmpeg. Optional: spotDL (Spotify links), yt-dlp (YouTube and
 - Accounts with roles (admin, user, visitor), two-step login, Discord login, logging in with your Navidrome / Jellyfin account, and a mode where anyone can listen but only you can change things.
 - Themes, your own CSS themes (with a header for name, author, version and an update address), sharing themes with a link, a simple player mode, light and dark.
 - WebDAV, backups, a full privacy mode (nothing leaves your network) and the `mmm` command.
+- Read-only API keys for dashboards (HomeSite, Homarr, Homepage …): what’s playing, library numbers, new albums, search and covers under `/api/integration`.
 
 ## The Navidrome plugin
 

@@ -116,7 +116,7 @@ export function PlayerProvider({ children }) {
     }
     if (wantPlay.current) a.play().catch(() => {});
     // Now playing on the service.
-    if (!current.radio) post(`p/${current.pid}/scrobble`, { key: streamKey(current), submission: false }).catch(() => {});
+    if (!current.radio) post(`p/${current.pid}/scrobble`, { key: streamKey(current), submission: false, song: { title: current.title, artist: current.artist, album: current.album, duration: current.duration }, player: navigator.userAgentData?.platform ? `Master Music Manager · ${navigator.userAgentData.platform}` : 'Master Music Manager' }).catch(() => {});
   }, [current]);
   // Remember the position every few seconds and when the page goes away.
   useEffect(() => {

@@ -31,7 +31,7 @@ async function authenticate(req) {
   if (!tries(req.ip)) throw httpError(429, 'Too many attempts');
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!user) return null;
-  for (const ap of db.prepare('SELECT * FROM app_passwords WHERE user_id = ?').all(user.id)) {
+  for (const ap of db.prepare("SELECT * FROM app_passwords WHERE user_id = ? AND scopes NOT LIKE '%\"api\"%'").all(user.id)) {
     if (await verifyPassword(password, ap.hash)) {
       db.prepare('UPDATE app_passwords SET last_used = ? WHERE id = ?').run(now(), ap.id);
       const r = { user: { id: user.id, username: user.username, role: user.role }, scopes: JSON.parse(ap.scopes), at: Date.now() };
@@ -196,7 +196,7 @@ export function mount(app) {
 }
 
 export function register(app) {
-  app.get('/api/account/app-passwords', requireUser, json((req) => db.prepare('SELECT id, name, scopes, last_used, created_at FROM app_passwords WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id).map((r) => ({ ...r, scopes: JSON.parse(r.scopes) }))));
+  app.get('/api/account/app-passwords', requireUser, json((req) => db.prepare("SELECT id, name, scopes, last_used, created_at FROM app_passwords WHERE user_id = ? AND scopes NOT LIKE '%\"api\"%' ORDER BY created_at DESC").all(req.user.id).map((r) => ({ ...r, scopes: JSON.parse(r.scopes) }))));
   app.post(
     '/api/account/app-passwords',
     requireUser,

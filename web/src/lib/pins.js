@@ -6,10 +6,12 @@ import { put } from './api.js';
 import { store } from './util.js';
 
 const listeners = new Set();
-let pins = store.get('pins', null);
+// "Shuffle everything" has its own big button on the home page, so it's no
+// pin any more (older saved lists drop it too).
+const noShuffle = (l) => (Array.isArray(l) ? l.filter((p) => p.type !== 'shuffle') : l);
+let pins = noShuffle(store.get('pins', null));
 
 export const DEFAULT_PINS = [
-  { type: 'shuffle', name: 'Shuffle everything' },
   { type: 'recent', name: 'Recently added' },
   { type: 'favorites', name: 'Your favorites' },
   { type: 'forgotten', name: 'Not played in a while' },
@@ -47,7 +49,7 @@ export function usePins() {
 /** Load pins from the account once after login. */
 export function adoptPins(fromAccount) {
   if (Array.isArray(fromAccount) && fromAccount.length && !store.get('pins', null)) {
-    pins = fromAccount;
+    pins = noShuffle(fromAccount);
     store.set('pins', pins);
     for (const fn of listeners) fn(pins);
   }

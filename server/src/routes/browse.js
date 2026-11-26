@@ -18,6 +18,7 @@ import * as tags from '../library/tags.js';
 import { compile } from '../library/query.js';
 import { splitArtists } from '../library/naming.js';
 import { streamStarted } from '../lib/disk.js';
+import { markPlaying } from '../integration.js';
 import { log } from '../lib/log.js';
 
 function prof(req) {
@@ -597,6 +598,10 @@ export function register(app) {
         } catch (e) {
           log.debug(`scrobble to ${p.name} failed: ${e.message}`);
         }
+      }
+      if (!submission) {
+        const song = req.body.song || {};
+        markPlaying({ user: req.user.displayName || req.user.username || 'Guest', player: str(req.body.player, 80) || 'Master Music Manager', title: t?.title || str(song.title, 300), artist: t?.artist || str(song.artist, 300), album: t?.album || str(song.album, 300), duration: t?.duration || Number(song.duration) || null, cover: t?.cover ? `${p.id}|l:${t.id}` : null });
       }
       if (submission && t) setAnn(p, req, t, { play_count: (ann(p, req, t).play_count || 0) + 1, last_played: Date.now() });
       if (submission) {

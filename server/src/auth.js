@@ -187,7 +187,32 @@ const fromLan = (req) => {
 };
 
 /** Attach req.user. Without required auth, visitors act as an admin "guest". */
+// API keys for other apps ("mmm_<id>_<secret>", 24 random bytes): stored as
+// SHA-256 (they can't be guessed, so a slow hash adds nothing) and only good
+// for reading the routes below.
+const API_KEY_ROUTES = [/^\/api\/health$/, /^\/api\/integration(\/|$)/, /^\/api\/p\/[^/]+\/cover\//, /^\/api\/p\/[^/]+\/tracks$/, /^\/api\/p\/[^/]+\/stats$/];
+function apiKeyUser(key) {
+  const m = key.match(/^mmm_([0-9a-f-]{36})_([\w-]{20,})$/);
+  if (!m) return null;
+  const row = db.prepare("SELECT * FROM app_passwords WHERE id = ? AND scopes LIKE '%\"api\"%'").get(m[1]);
+  if (!row || !safeEqual(row.hash, `sha256:${sha256(m[2])}`)) return null;
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+  if (!u) return null;
+  if (!row.last_used || now() - row.last_used > 60_000) db.prepare('UPDATE app_passwords SET last_used = ? WHERE id = ?').run(now(), row.id);
+  return publicUser(u);
+}
+export const makeApiKeyHash = (secret) => `sha256:${sha256(secret)}`;
+
 export function attachUser(req, _res, next) {
+  const bearer = String(req.get('authorization') || '').match(/^Bearer (mmm_\S+)$/)?.[1];
+  if (bearer) {
+    const u = apiKeyUser(bearer);
+    if (!u) return next(httpError(401, 'This API key is not valid (deleted?)'));
+    if (!['GET', 'HEAD'].includes(req.method) || !API_KEY_ROUTES.some((re) => re.test(req.path))) return next(httpError(403, 'API keys can only read the integration routes (see /api/integration)'));
+    req.user = u;
+    req.apiKey = true;
+    return next();
+  }
   const cli = req.get('x-mmm-cli');
   if (cli && isLoopback(req.socket.remoteAddress) && safeEqual(cli, CLI_TOKEN)) {
     req.user = CLI_USER;

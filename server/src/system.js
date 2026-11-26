@@ -16,6 +16,9 @@ import { seal, unseal, passphraseKey, sha256, safeEqual, token } from './lib/cry
 import { merge as mergeScrobbles } from './scrobbles.js';
 import { aboutByName } from './artists.js';
 import { THEMES } from './themes.js';
+
+/** What the Navidrome plugin last reported per user and player. */
+export const PLUGIN_PLAYING = new Map();
 import { take } from './uploads.js';
 
 // ---- updates ----
@@ -394,7 +397,7 @@ export function register(app) {
     const profile = db.prepare("SELECT id FROM profiles WHERE kind = 'navidrome' AND owner_id IS NULL ORDER BY sort LIMIT 1").get();
     return mergeScrobbles(items, { profileId: profile?.id, username: req.body.username, source: 'navidrome-history' });
   }));
-  const nowPlaying = new Map();
+  const nowPlaying = PLUGIN_PLAYING;
   app.post('/api/plugin/playback', express.json(), pluginAuth, json((req) => {
     nowPlaying.set(`${req.body.username}:${req.body.playerId || ''}`, { ...req.body, at: now() });
     return { ok: true };

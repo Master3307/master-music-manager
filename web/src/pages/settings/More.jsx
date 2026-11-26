@@ -95,6 +95,7 @@ export function Account() {
             ))}
             <div><button className="btn" onClick={() => setNewApp({ name: 'My laptop', write: false })}><Plus /> New app password</button></div>
           </Section>
+          <ApiKeys />
         </>
       )}
       {isAdmin && (
@@ -186,6 +187,40 @@ export function Account() {
         />
       )}
     </>
+  );
+}
+
+/** Read-only keys for dashboards (HomeSite, Homarr, Homepage …) and scripts. */
+function ApiKeys() {
+  const { fail } = useApp();
+  const keys = useLoad(() => get('account/api-keys'), []);
+  const [made, setMade] = useState(null);
+  const [name, setName] = useState('');
+  const confirm = useConfirm();
+  return (
+    <Section title="Keys for other apps" description="Let a dashboard (like HomeSite, Homarr or Homepage) show what’s playing, your library’s numbers, new albums and search results. A key can only read those, never change anything, and works as you.">
+      <Field label="Address for the app"><CopyField value={location.origin} /></Field>
+      {(keys.data || []).map((k) => (
+        <div key={k.id} className="row">
+          <KeyRound size={15} className="faint" />
+          <span className="grow">{k.name} <span className="faint">· {k.last_used ? `used ${ago(k.last_used)}` : 'never used'}</span></span>
+          <button className="btn small ghost danger" onClick={async () => { if (await confirm({ title: `Delete the key “${k.name}”?`, body: 'The app using it stops getting anything.', danger: true, confirm: 'Delete' })) del(`account/api-keys/${k.id}`).then(keys.reload, fail); }}>Delete</button>
+        </div>
+      ))}
+      {made ? (
+        <>
+          <Field label="Your new key" hint="Copy it now: it isn’t shown again. Paste it into the other app’s Master Music Manager integration.">
+            <CopyField value={made} />
+          </Field>
+          <div><button className="btn" onClick={() => setMade(null)}><Check /> Done</button></div>
+        </>
+      ) : (
+        <div className="row">
+          <input className="input" style={{ maxWidth: 260 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. HomeSite dashboard" />
+          <button className="btn" onClick={() => post('account/api-keys', { name: name || 'Dashboard' }).then((r) => { setMade(r.key); setName(''); keys.reload(); }, fail)}><Plus /> Make a key</button>
+        </div>
+      )}
+    </Section>
   );
 }
 
