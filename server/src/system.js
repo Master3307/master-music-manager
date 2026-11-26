@@ -49,23 +49,35 @@ export async function checkUpdate({ force = false } = {}) {
 
 const isGit = () => fs.existsSync(path.join(ROOT, '.git'));
 
+async function downloadRelease(ctx) {
+  const url = `https://github.com/${REPO}/archive/refs/heads/master.tar.gz`;
+  ctx.log(`Downloading ${url}`);
+  const tmp = path.join(PATHS.cache, 'update.tgz');
+  const r = await fetch(url, { signal: AbortSignal.timeout(300_000) });
+  if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
+  fs.writeFileSync(tmp, Buffer.from(await r.arrayBuffer()));
+  await ctx.run('tar', ['-xzf', tmp, '-C', ROOT, '--strip-components=1']);
+  fs.rmSync(tmp, { force: true });
+}
+
 function runUpdate(ctx) {
   return (async () => {
     if (isGit()) {
-      await ctx.run('git', ['-C', ROOT, 'fetch', '--tags', '--prune', 'origin']);
       const status = await ctx.run('git', ['-C', ROOT, 'status', '--porcelain'], { quiet: true });
       if (status.stdout.trim()) {
         ctx.log('Local changes found; keeping them aside (git stash)');
         await ctx.run('git', ['-C', ROOT, 'stash', 'push', '-u', '-m', `mmm-update-${Date.now()}`]);
       }
-      await ctx.run('git', ['-C', ROOT, 'pull', '--ff-only']);
+      // Straight from GitHub's master branch, whatever this clone's remote or branch is set to.
+      try {
+        await ctx.run('git', ['-C', ROOT, 'fetch', `https://github.com/${REPO}.git`, 'master']);
+        await ctx.run('git', ['-C', ROOT, 'merge', '--ff-only', 'FETCH_HEAD']);
+      } catch (e) {
+        ctx.log(`git couldn’t update this copy (${e.message.split('|')[0].trim()}); downloading the newest version instead.`);
+        await downloadRelease(ctx);
+      }
     } else {
-      const url = `https://github.com/${REPO}/archive/refs/heads/master.tar.gz`;
-      ctx.log(`Downloading ${url}`);
-      const tmp = path.join(PATHS.cache, 'update.tgz');
-      const r = await fetch(url, { signal: AbortSignal.timeout(300_000) });
-      fs.writeFileSync(tmp, Buffer.from(await r.arrayBuffer()));
-      await ctx.run('tar', ['-xzf', tmp, '-C', ROOT, '--strip-components=1']);
+      await downloadRelease(ctx);
     }
     const pnpm = (await whichBin('pnpm')) || 'npx pnpm';
     await ctx.run('sh', ['-c', `cd "${ROOT}" && ${pnpm} install --frozen-lockfile --prod=false && ${pnpm} build`]);

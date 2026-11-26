@@ -25,7 +25,7 @@ async function mbFetch(path) {
       await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
       continue;
     }
-    throw new Error(`MusicBrainz answered ${r.status}`);
+    throw Object.assign(new Error(r.status === 503 || r.status === 429 ? 'MusicBrainz is busy right now. Try again in a minute.' : `MusicBrainz answered ${r.status}`), { status: 503, expected: true });
   }
 }
 
@@ -50,6 +50,10 @@ function closeness(a, b) {
 export async function search({ title, artist, album, duration }) {
   if (!settings.online('musicbrainz')) throw httpError(403, 'Online lookups are off (Settings → Privacy & online)');
   if (!title) throw httpError(400, 'Need at least a title');
+  // A broken tag can hold a list of file paths: only sane values are searched for.
+  const sane = (v) => (v && String(v).length <= 150 && (String(v).match(/\//g) || []).length < 4 ? v : undefined);
+  album = sane(album);
+  artist = sane(artist);
   const q = [`recording:"${esc(title)}"`, artist && `artist:"${esc(artist)}"`, album && `release:"${esc(album)}"`].filter(Boolean).join(' AND ');
   let r = await mb(`recording?query=${encodeURIComponent(q)}&limit=15&fmt=json`);
   if (!r.recordings?.length && album) r = await mb(`recording?query=${encodeURIComponent([`recording:"${esc(title)}"`, artist && `artist:"${esc(artist)}"`].filter(Boolean).join(' AND '))}&limit=15&fmt=json`);

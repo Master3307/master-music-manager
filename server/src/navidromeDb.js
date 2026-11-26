@@ -13,6 +13,25 @@ export function findDb(hint) {
     const dir = t.match(/^\s*DataFolder\s*=\s*["']?([^"'\n]+)/m)?.[1];
     if (dir) candidates.unshift(path.join(dir.trim(), 'navidrome.db'));
   } catch {}
+  // Started by hand (a shell alias …): its --datafolder, or a navidrome.db in the home folder.
+  try {
+    for (const pid of fs.readdirSync('/proc').filter((x) => /^\d+$/.test(x))) {
+      let args;
+      try {
+        args = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0');
+      } catch {
+        continue;
+      }
+      if (!/navidrome$/.test(args[0] || '')) continue;
+      const i = args.findIndex((a) => a === '--datafolder' || a.startsWith('--datafolder='));
+      if (i >= 0) candidates.unshift(path.join(args[i].includes('=') ? args[i].split('=')[1] : args[i + 1], 'navidrome.db'));
+    }
+  } catch {}
+  for (const base of [path.join(process.env.HOME || '', '.local/share'), path.join(process.env.HOME || '', '.config')]) {
+    try {
+      for (const d of fs.readdirSync(base)) if (/navidrome/i.test(d)) candidates.push(path.join(base, d, 'navidrome.db'));
+    } catch {}
+  }
   return candidates.find((f) => {
     try {
       fs.accessSync(f, fs.constants.R_OK);

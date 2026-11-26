@@ -195,6 +195,7 @@ async function mirror(n, ctx) {
   const want = db.prepare('SELECT * FROM remote_tracks WHERE node_id = ? AND audio_hash IS NOT NULL').all(n.id).filter((r) => !have.has(r.audio_hash));
   ctx?.log?.(`  mirror: ${want.length} songs to copy into ${target.name}`);
   let i = 0;
+  let copied = 0;
   for (const r of want) {
     ctx?.check?.();
     try {
@@ -211,12 +212,13 @@ async function mirror(n, ctx) {
       const t = await lib.rescanFile(target, rel);
       db.prepare('UPDATE tracks SET audio_hash = ? WHERE id = ?').run(r.audio_hash, t.id);
       have.add(r.audio_hash);
+      copied++;
     } catch (e) {
       ctx?.log?.(`  ! ${r.path}: ${e.message}`);
     }
     ctx?.progress?.(++i / want.length, `Copied ${i} / ${want.length}`);
   }
-  lib.touchService(target);
+  if (copied) lib.touchService(target);
 }
 
 export function syncAll({ userId } = {}) {

@@ -148,7 +148,9 @@ const commands = {
       const r = spawnSync(cmd, a, { stdio: 'inherit', cwd: ROOT });
       if (r.status) process.exit(r.status);
     };
-    run('git', ['pull', '--ff-only']);
+    // Straight from GitHub's master branch, whatever this clone's remote is set to.
+    run('git', ['fetch', 'https://github.com/Master3307/master-music-manager.git', 'master']);
+    run('git', ['merge', '--ff-only', 'FETCH_HEAD']);
     run('pnpm', ['install', '--frozen-lockfile']);
     run('pnpm', ['build']);
     console.log(c.ok('Updated. Start it with: mmm start'));

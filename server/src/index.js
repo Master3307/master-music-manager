@@ -31,6 +31,7 @@ import * as integration from './integration.js';
 import { PLUGIN_PLAYING } from './system.js';
 import * as lookup from './lookup.js';
 import * as navidromeDb from './navidromeDb.js';
+import * as lib from './library/index.js';
 import { checkUpdate } from './system.js';
 
 const app = express();
@@ -116,8 +117,16 @@ if (fs.existsSync(dist)) {
 
 // Errors: JSON for the API, plain for the rest.
 app.use((err, req, res, _next) => {
+  // A song's file was moved or deleted outside the app: say so, and read that library again.
+  if (err.code === 'ENOENT' && /\/api\/p\/[^/]+\//.test(req.originalUrl)) {
+    const pid = req.originalUrl.split('/')[3];
+    lib.staleFile(decodeURIComponent(pid));
+    err = Object.assign(new Error('This song’s file isn’t there any more (moved or deleted outside Master Music Manager). The folder is being read again.'), { status: 404 });
+  }
   const status = err.status || err.statusCode || (err.type === 'entity.too.large' ? 413 : 500);
-  if (status >= 500) log.error(`${req.method} ${req.originalUrl}:`, err.stack || err.message);
+  // Real server faults get the stack; expected answers (gone, busy, unreachable) one line.
+  if (status >= 500 && !err.expected) log.error(`${req.method} ${req.originalUrl}:`, err.stack || err.message);
+  else if (status >= 500 || status === 404) log.warn(`${req.method} ${req.originalUrl.slice(0, 200)}: ${err.message}`);
   if (res.headersSent) return res.end();
   const body = { error: status >= 500 && !err.status ? 'Something went wrong on the server. The details are in the logs.' : err.message, ...(err.extra || {}) };
   if (req.originalUrl.startsWith('/api') || req.accepts(['json', 'html']) === 'json') res.status(status).json(body);

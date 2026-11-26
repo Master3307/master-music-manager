@@ -5,7 +5,8 @@ export class HttpError extends Error {
     this.extra = extra;
   }
 }
-export const httpError = (status, message, extra) => new HttpError(status, message, extra);
+// Thrown on purpose with a message for people: logged as one line, never as a crash.
+export const httpError = (status, message, extra) => Object.assign(new HttpError(status, message, extra), { expected: true });
 
 /** Express 5 forwards rejected promises itself; this only adds JSON replies. */
 export const json = (fn) => async (req, res, next) => {

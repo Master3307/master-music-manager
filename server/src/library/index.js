@@ -493,9 +493,26 @@ export async function applyEdit(profile, track, edit, { organize, restorePoint =
 }
 
 /** Move to the app's trash (never deleted right away). */
+// A file someone asked for is gone: read that library again soon (once per 10 minutes at most).
+const staleScan = new Map();
+export function staleFile(profileId) {
+  const last = staleScan.get(profileId) || 0;
+  if (Date.now() - last < 10 * 60_000) return;
+  staleScan.set(profileId, Date.now());
+  const p = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
+  if (p?.local_path && fs.existsSync(p.local_path)) setTimeout(() => scan(p), 2000);
+}
+
 export function trash(profile, track, userId) {
   const abs = absPath(profile, track.path);
   const dest = path.join(PATHS.trash, `${Date.now()}-${path.basename(abs)}`);
+  if (!fs.existsSync(abs)) {
+    // Already gone (moved or deleted outside the app): just forget it.
+    db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
+    refreshRow(profile.id, track.id);
+    staleFile(profile.id);
+    return null;
+  }
   try {
     fs.renameSync(abs, dest);
   } catch {
