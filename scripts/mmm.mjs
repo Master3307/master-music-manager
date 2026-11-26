@@ -90,7 +90,7 @@ const commands = {
   ${c.acc('mmm doctor')}            check FFmpeg, spotDL, yt-dlp, permissions, port
   ${c.acc('mmm service')} on|off    start with the computer (systemd)
   ${c.acc('mmm setup')}             the terminal setup (port, folders, service)
-  ${c.acc('mmm plugin')}            install the Navidrome plugin on this machine
+  ${c.acc('mmm plugin')}            install, connect and enable the Navidrome plugin on this machine
   ${c.acc('mmm version')}`);
   },
   async 'setup-code'() {
@@ -244,20 +244,16 @@ const commands = {
     spawnSync(process.execPath, [path.join(ROOT, 'scripts/setup.mjs'), ...args], { stdio: 'inherit' });
   },
   async plugin() {
-    const dirs = ['/var/lib/navidrome/plugins', '/opt/navidrome/plugins', '/data/plugins'];
-    const dir = args[0] || dirs.find((d) => fs.existsSync(d));
-    if (!dir) throw new Error('Navidrome’s plugin folder was not found. Give it: mmm plugin /path/to/navidrome/plugins');
-    const rel = await fetch('https://api.github.com/repos/Master3307/master-music-manager/releases?per_page=20').then((r) => r.json());
-    const asset = rel.find((r) => r.tag_name.startsWith('plugin-v'))?.assets?.find((a) => a.name.endsWith('.ndp'));
-    if (!asset) throw new Error('No plugin release found on GitHub yet');
-    const data = Buffer.from(await (await fetch(asset.browser_download_url)).arrayBuffer());
-    const out = path.join(dir, 'master-music-manager.ndp');
-    fs.writeFileSync(out, data);
-    try {
-      execFileSync('chown', ['--reference', dir, out]);
-    } catch {}
-    console.log(c.ok(`Installed ${out}`));
-    console.log(`Next: make a secret in Master Music Manager (Settings → Navidrome plugin) and paste it in Navidrome → Plugins, or run the command shown there.`);
+    // Same script as the one-line install on other machines; here it is
+    // connected right away with a fresh secret and this machine's address.
+    const pass = [...args];
+    if (!pass.includes('--url') && !pass.includes('--secret') && !flag('--file-only')) {
+      if (!(await running())) throw new Error('Master Music Manager is not running here. Start it first (mmm status), or use --file-only.');
+      const { secret } = await api('plugin/secret', { method: 'POST' });
+      pass.push('--url', `http://localhost:${PORT}`, '--secret', secret);
+    }
+    const r = spawnSync('bash', [path.join(ROOT, 'scripts/install-plugin.sh'), ...pass.filter((a) => a !== '--file-only')], { stdio: 'inherit' });
+    if (r.status) process.exit(r.status);
   },
 };
 

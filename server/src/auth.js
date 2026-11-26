@@ -213,7 +213,8 @@ export function requireAdmin(req, _res, next) {
 /** CSRF: mutations need our header and, when the browser sends one, a matching Origin. */
 export function csrf(req, _res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  if (req.path.startsWith('/api/plugin/') || req.path.startsWith('/s/')) return next(); // token-authenticated
+  // Calls from the Navidrome plugin carry its secret, not a browser cookie.
+  if (/^\/api\/plugin\/(scrobble|history|playback)$/.test(req.path) || req.path.startsWith('/s/')) return next();
   if (req.get('x-mmm') !== '1') return next(httpError(403, 'Missing request header'));
   const origin = req.get('origin');
   if (origin) {

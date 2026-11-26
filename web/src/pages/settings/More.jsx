@@ -295,9 +295,19 @@ export function Plugin() {
   const st = useLoad(() => get('plugin/status'), []);
   const upd = useLoad(() => get('update'), []);
   const [secret, setSecret] = useState(null);
-  const url = `${location.origin}`;
-  const config = secret ? JSON.stringify({ url, secret, syncHistory: true }) : null;
   const nd = profiles.find((p) => p.kind === 'navidrome');
+  // Navidrome on this same machine reaches us fastest (and without the internet) on localhost.
+  const sameMachine = (() => {
+    try {
+      return ['localhost', '127.0.0.1', '::1'].includes(new URL(nd?.url || '').hostname);
+    } catch {
+      return false;
+    }
+  })();
+  const [where, setWhere] = useState(null);
+  const place = where ?? (sameMachine ? 'here' : 'other');
+  const url = place === 'here' && st.data?.port ? `http://localhost:${st.data.port}` : location.origin;
+  const script = 'https://raw.githubusercontent.com/Master3307/master-music-manager/master/scripts/install-plugin.sh';
   return (
     <>
       <h1 className="page-title">Navidrome plugin</h1>
@@ -306,27 +316,44 @@ export function Plugin() {
         {st.data?.lastSeen ? <span className="badge ok"><Check size={12} /> Last heard from {ago(st.data.lastSeen)}{st.data.version ? ` · version ${st.data.version}` : ''}</span> : <span className="badge">Not connected yet</span>}
         {upd.data?.latest?.plugin && <span className="faint" style={{ fontSize: 13 }}>Newest plugin: {upd.data.latest.plugin.version}</span>}
       </Section>
-      <Section title="Install it in 4 steps">
-        <ol className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9 }}>
-          <li>
-            Download <b>master-music-manager.ndp</b>: <a href="https://github.com/Master3307/master-music-manager/releases?q=plugin&expanded=true" target="_blank" rel="noopener noreferrer">latest plugin release <ExternalLink size={12} /></a>
-          </li>
-          <li>Copy it into Navidrome’s plugin folder (usually <span className="mono">/var/lib/navidrome/plugins/</span>). Plugins are on by default in Navidrome 0.60+.</li>
-          <li>
-            Make the connection secret here: <button className="btn small" onClick={() => post('plugin/secret').then((r) => setSecret(r.secret), fail)}><KeyRound /> Make a secret</button>
-          </li>
-          <li>In Navidrome → Plugins → Master Music Manager: paste the address and secret, allow all users (or pick some), and enable it. Or on the server:</li>
-        </ol>
-        {secret && (
+      <Section title="Install it" description="One command on the machine where Navidrome runs. It finds Navidrome by itself (as a service, a plain program or in Docker), installs the plugin, connects it and switches it on.">
+        <Segmented
+          value={place}
+          onChange={setWhere}
+          options={[
+            { value: 'here', label: 'Navidrome is on this machine' },
+            { value: 'other', label: 'On another machine' },
+          ]}
+        />
+        {place === 'here' ? (
           <>
-            <Field label="Address"><CopyField value={url} /></Field>
-            <Field label="Secret"><CopyField value={secret} /></Field>
-            <Field label="Or in one command on the Navidrome machine">
-              <CopyField value={`navidrome plugin edit master-music-manager --config '${config}' --all-users && navidrome plugin enable master-music-manager`} />
+            <Field label="Run this on the machine" hint="It makes a new secret itself, so nothing to copy.">
+              <CopyField value="sudo mmm plugin" />
             </Field>
+            <span className="faint" style={{ fontSize: 12.5 }}>In a Proxmox container: <span className="mono">pct exec &lt;id&gt; -- mmm plugin</span></span>
           </>
+        ) : secret ? (
+          <Field label="Run this on the Navidrome machine" hint="Navidrome has to reach this address. If it doesn’t, the command says so.">
+            <CopyField value={`curl -fsSL ${script} | sudo bash -s -- --url ${url} --secret ${secret}`} />
+          </Field>
+        ) : (
+          <div>
+            <button className="btn primary" onClick={() => post('plugin/secret').then((r) => setSecret(r.secret), fail)}><KeyRound /> Make the command</button>
+            <span className="faint" style={{ fontSize: 12.5, marginLeft: 10 }}>Makes a new secret; an older one stops working.</span>
+          </div>
         )}
         {!nd && <Notice>None of your libraries is a Navidrome server. The plugin only works with Navidrome.</Notice>}
+      </Section>
+      <Section title="By hand" description="Without a terminal, for example on Windows.">
+        <ol className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9 }}>
+          <li>
+            Download <b>master-music-manager.ndp</b> from the <a href="https://github.com/Master3307/master-music-manager/releases?q=plugin&expanded=true" target="_blank" rel="noopener noreferrer">latest plugin release <ExternalLink size={12} /></a> into Navidrome’s <span className="mono">plugins</span> folder (inside its data folder) and restart Navidrome.
+          </li>
+          <li>Make a secret: choose “On another machine” above and press the button.</li>
+          <li>Navidrome → Plugins → Master Music Manager: paste the address and the secret, allow all users, and enable it.</li>
+        </ol>
+        <Field label="Address"><CopyField value={url} /></Field>
+        {secret && <Field label="Secret"><CopyField value={secret} /></Field>}
       </Section>
       <Notice>The plugin needs to reach this address. If Navidrome runs on another machine, use an address it can reach (LAN IP or public URL).</Notice>
       {toast && null}

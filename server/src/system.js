@@ -381,7 +381,7 @@ export function register(app) {
   }));
   app.get('/api/plugin/status', requireUser, json(() => {
     const p = settings.get('plugin');
-    return { configured: Boolean(p.secret), lastSeen: p.lastSeen, version: p.version };
+    return { configured: Boolean(p.secret), lastSeen: p.lastSeen, version: p.version, port: PORT };
   }));
   app.post('/api/plugin/scrobble', express.json({ limit: '2mb' }), pluginAuth, json((req) => {
     const b = req.body || {};
