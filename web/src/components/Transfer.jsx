@@ -3,7 +3,7 @@ import { ArrowRightLeft, Trash2, HardDrive, Network } from 'lucide-react';
 import { useApp, useLoad } from '../lib/app.jsx';
 import { get, post } from '../lib/api.js';
 import { plural } from '../lib/util.js';
-import { Modal, Segmented, Toggle, Notice, Spinner } from './ui.jsx';
+import { Modal, Segmented, Toggle, Notice, Spinner, Field } from './ui.jsx';
 
 function Places({ value, onChange, exclude, showAll }) {
   const { profiles } = useApp();
@@ -67,6 +67,9 @@ export function RemoveDialog({ ids, onClose, onDone }) {
   const [scope, setScope] = useState('here');
   const [places, setPlaces] = useState([]);
   const [preview, setPreview] = useState(null);
+  const { isAdmin } = useApp();
+  const [what, setWhat] = useState('trash'); // trash | out
+  const [folder, setFolder] = useState('');
   const target = scope === 'here' ? [{ profileId: pid }] : scope === 'all' ? 'all' : [{ profileId: pid }, ...places];
   useEffect(() => {
     setPreview(null);
@@ -75,10 +78,10 @@ export function RemoveDialog({ ids, onClose, onDone }) {
   }, [scope, JSON.stringify(places)]);
   const go = async () => {
     try {
-      const r = await post('remove-everywhere', { from: pid, ids, places: target });
+      const r = await post('remove-everywhere', { from: pid, ids, places: target, takeOut: what === 'out' ? folder.trim() || true : undefined });
       onClose();
       afterJob(r.job).then((j) => {
-        if (j.status === 'done') toast(`${j.result.removed} files moved to the trash`);
+        if (j.status === 'done') toast(j.result.folder ? `${plural(j.result.removed, 'song')} taken out, now in ${j.result.folder}` : `${j.result.removed} files moved to the trash`, { kind: 'ok' });
         else fail(j.error);
         onDone?.();
       });
@@ -91,7 +94,7 @@ export function RemoveDialog({ ids, onClose, onDone }) {
       title={`Remove ${plural(ids.length, 'song')}`}
       icon={<Trash2 />}
       onClose={onClose}
-      footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn danger solid" onClick={go}>Remove</button></>}
+      footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className={what === 'out' ? 'btn primary' : 'btn danger solid'} onClick={go}>{what === 'out' ? 'Take out' : 'Remove'}</button></>}
     >
       <Segmented value={scope} onChange={setScope} options={[{ value: 'here', label: `From ${profile?.name}` }, { value: 'some', label: 'From some places' }, { value: 'all', label: 'From everywhere' }]} />
       {scope === 'some' && <Places value={places} onChange={setPlaces} exclude={pid} />}
@@ -105,7 +108,22 @@ export function RemoveDialog({ ids, onClose, onDone }) {
       ) : (
         <Spinner />
       )}
-      <Notice>Everything goes to the trash on each side first. Empty the trash to free the space.</Notice>
+      <Field label="What happens to the files">
+        <Segmented value={what} onChange={setWhat} options={[{ value: 'trash', label: 'Into the trash' }, { value: 'out', label: 'Take them out, keep the files' }]} />
+      </Field>
+      {what === 'out' ? (
+        <>
+          <p className="muted" style={{ margin: 0 }}>The songs leave the library and your music server, but the files are kept in a folder outside it, sorted as before. Linked instances still put theirs in the trash.</p>
+          {isAdmin && (
+            <Field label="Folder" hint="Outside your libraries. Empty: the suggested one.">
+              <input className="input mono" value={folder} onChange={(e) => setFolder(e.target.value)} placeholder={preview?.takeOutFolder || ''} />
+            </Field>
+          )}
+          {!isAdmin && preview?.takeOutFolder && <p className="faint mono" style={{ margin: 0, fontSize: 12.5 }}>{preview.takeOutFolder}</p>}
+        </>
+      ) : (
+        <Notice>Everything goes to the trash on each side first. Empty the trash to free the space.</Notice>
+      )}
     </Modal>
   );
 }

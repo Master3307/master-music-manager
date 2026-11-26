@@ -495,6 +495,38 @@ export function trash(profile, track, userId) {
   return dest;
 }
 
+/** Where songs go that are taken out of a library: next to its folder, easy to find. */
+export function takeOutFolder(profile) {
+  const root = path.resolve(profile.local_path);
+  return path.join(path.dirname(root), `${path.basename(root)} (taken out)`);
+}
+
+/**
+ * Take a song out of the library (and so off the music server) without
+ * deleting it: the file moves to a folder outside every library, keeping its
+ * Artist/Album/… path there.
+ */
+export function takeOut(profile, track, folder, userId) {
+  const abs = absPath(profile, track.path);
+  let dest = path.join(folder, track.path);
+  for (let i = 2; fs.existsSync(dest); i++) dest = path.join(folder, track.path.replace(/(\.[^.]+)$/, ` (${i})$1`));
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  try {
+    fs.renameSync(abs, dest); // same disk: instant, nothing is read or copied
+  } catch {
+    fs.copyFileSync(abs, dest);
+    fs.rmSync(abs);
+  }
+  const lrc = abs.replace(/\.[^.]+$/, '.lrc');
+  if (fs.existsSync(lrc)) fs.renameSync(lrc, dest.replace(/\.[^.]+$/, '.lrc'));
+  db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
+  refreshRow(profile.id, track.id);
+  removeEmptyDirs(profile, path.dirname(abs));
+  touchService(profile);
+  audit(userId, 'track.take-out', { profile: profile.id, path: track.path, to: dest });
+  return dest;
+}
+
 export function trashList() {
   return fs
     .readdirSync(PATHS.trash)
