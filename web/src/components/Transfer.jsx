@@ -3,7 +3,7 @@ import { ArrowRightLeft, Trash2, HardDrive, Network } from 'lucide-react';
 import { useApp, useLoad } from '../lib/app.jsx';
 import { get, post } from '../lib/api.js';
 import { plural } from '../lib/util.js';
-import { Modal, Segmented, Toggle, Notice, Spinner, Field } from './ui.jsx';
+import { Modal, Segmented, Toggle, Notice, Spinner, Field, JobProgress } from './ui.jsx';
 
 function Places({ value, onChange, exclude, showAll }) {
   const { profiles } = useApp();
@@ -33,16 +33,16 @@ function Places({ value, onChange, exclude, showAll }) {
 }
 
 export function TransferDialog({ ids, onClose }) {
-  const { pid, toast, fail, afterJob } = useApp();
+  const { pid, toast, fail, afterJob, jobs } = useApp();
+  const [job, setJob] = useState(null);
   const [to, setTo] = useState([]);
   const [mode, setMode] = useState('copy');
   const [skip, setSkip] = useState(true);
   const go = async () => {
     try {
       const r = await post('transfer', { from: pid, ids, to, mode, skipExisting: skip });
-      toast(`${mode === 'move' ? 'Moving' : 'Copying'} ${plural(ids.length, 'song')}…`);
-      onClose();
-      afterJob(r.job).then((j) => j.status === 'done' ? toast(`Done: ${j.result.done} handled, ${j.result.skipped} already there`) : fail(j.error));
+      setJob(r.job);
+      afterJob(r.job).then((j) => (j.status === 'done' ? toast(`Done: ${j.result.done} handled, ${j.result.skipped} already there`, { kind: 'ok' }) : j.status === 'failed' && fail(j.error)));
     } catch (e) {
       fail(e);
     }
@@ -52,12 +52,15 @@ export function TransferDialog({ ids, onClose }) {
       title={`${mode === 'move' ? 'Move' : 'Copy'} ${plural(ids.length, 'song')}`}
       icon={<ArrowRightLeft />}
       onClose={onClose}
-      footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!to.length} onClick={go}>{mode === 'move' ? 'Move' : 'Copy'}</button></>}
+      footer={job ? <button className="btn" onClick={onClose}>{['queued', 'running'].includes(jobs[job]?.status) ? 'Close (it keeps going)' : 'Close'}</button> : <><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!to.length} onClick={go}>{mode === 'move' ? 'Move' : 'Copy'}</button></>}
     >
+      {job && <JobProgress job={jobs[job] || { id: job, status: 'queued' }} what={`${mode === 'move' ? 'Moving' : 'Copying'} ${plural(ids.length, 'song')}`} onDone={onClose} />}
+      {!job && <>
       <Segmented value={mode} onChange={setMode} options={[{ value: 'copy', label: 'Copy (keep them here)' }, { value: 'move', label: 'Move (remove them here)' }]} />
       <Places value={to} onChange={setTo} exclude={pid} />
       <Toggle checked={skip} onChange={setSkip} label="Skip songs that are already there" description="Compared by the actual audio, so renamed or retagged copies count as the same." />
       {mode === 'move' && <Notice kind="warn">Moved songs go to this library’s trash once they arrived everywhere, so it can be undone.</Notice>}
+      </>}
     </Modal>
   );
 }

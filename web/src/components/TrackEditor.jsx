@@ -4,7 +4,7 @@ import { useApp } from '../lib/app.jsx';
 import { usePlayer } from '../lib/player.jsx';
 import { get, post, patch, del, api } from '../lib/api.js';
 import { fmtTime, fmtSize, date, ago, cx, plural } from '../lib/util.js';
-import { Modal, Tabs, Field, Notice, Spinner, Toggle, Empty, useConfirm } from './ui.jsx';
+import { Modal, Tabs, Field, Notice, Spinner, Toggle, Empty, useConfirm, JobProgress } from './ui.jsx';
 import { ImageEditor } from './ImageEditor.jsx';
 import { LyricsEditor } from './LyricsEditor.jsx';
 import { AudioEditor } from './AudioEditor.jsx';
@@ -18,7 +18,8 @@ const asText = (v) => (v == null ? '' : Array.isArray(v) ? v.join('; ') : String
 
 /** Edit one song (all tabs) or many (details, custom tags, cover). */
 export function TrackEditor({ ids, onClose, onSaved, start }) {
-  const { pid, fields, settings, fail, toast, afterJob } = useApp();
+  const { pid, fields, settings, fail, toast, afterJob, jobs } = useApp();
+  const [saving, setSaving] = useState(null); // the job saving (and moving) many songs
   const multi = ids.length > 1;
   // start: 'find' opens the online search, 'recognize' the Recognize tab.
   const [tab, setTab] = useState(start === 'recognize' ? 'recognize' : 'details');
@@ -91,9 +92,10 @@ export function TrackEditor({ ids, onClose, onSaved, start }) {
         ];
         const r = await post(`p/${pid}/bulk`, { ids, op: ops[0], ops: ops.slice(1), apply: true, restorePoints: ids.length <= 500 });
         if (r.job) {
-          toast(`Saving ${plural(ids.length, 'song')}…`);
-          await afterJob(r.job);
-          toast(`Saved ${plural(ids.length, 'song')}`);
+          setSaving(r.job);
+          const j = await afterJob(r.job);
+          setSaving(null);
+          toast(j.status === 'done' ? `Saved ${plural(ids.length, 'song')}${organize ? ' and moved them into place' : ''}` : j.error || 'Stopped', { kind: j.status === 'done' ? 'ok' : 'error' });
         }
       }
       setEdit({});
@@ -154,6 +156,7 @@ export function TrackEditor({ ids, onClose, onSaved, start }) {
               </div>
             </div>
           )}
+          {saving && <JobProgress job={jobs[saving] || { id: saving, status: 'queued' }} what={organize ? `Saving and moving ${plural(ids.length, 'song')}` : `Saving ${plural(ids.length, 'song')}`} onDone={() => setSaving(null)} />}
           <Tabs tabs={tabs} value={tab} onChange={setTab} />
           {tab === 'details' && !multi && (
             <div className="row" style={{ marginTop: -6 }}>
