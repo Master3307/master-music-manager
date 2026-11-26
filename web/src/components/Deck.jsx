@@ -503,20 +503,57 @@ export function Deck({ onClose }) {
 export function Capsule({ onOpen }) {
   const p = usePlayer();
   const menus = useMenus();
+  const bar = useRef(null);
+  const [drag, setDrag] = useState(null); // 0..1 while dragging the progress bar
   const cur = p.current;
   if (!cur) return null;
   const d = p.duration || cur.duration || 0;
+  const at = (e) => {
+    const r = bar.current.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  };
+  const shown = drag ?? (d ? p.time / d : 0);
   return (
     <div className="capsule" role="region" aria-label="Now playing" onContextMenu={(e) => menus.nowPlaying(e, { onFull: onOpen })}>
-      <Cover pid={cur.pid} id={cur.coverArt} size={100} round onClick={onOpen} />
-      <div className="meta" onClick={onOpen}>
+      <Cover pid={cur.pid} id={cur.coverArt} size={120} round />
+      {/* A single click doesn't open anything by accident; double-click or the button does. */}
+      <div className="meta" onDoubleClick={onOpen} title="Double-click for the big player">
         <b>{cur.title}</b>
         <small>{cur.artist}</small>
       </div>
+      <span className="time tabular">{fmtTime(drag != null ? drag * d : p.time)} / {fmtTime(d)}</span>
       <button className="btn icon" onClick={p.prev} aria-label="Previous"><SkipBack fill="currentColor" /></button>
       <button className="btn icon play" onClick={p.toggle} aria-label={p.playing ? 'Pause' : 'Play'}>{p.playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</button>
       <button className="btn icon" onClick={p.next} aria-label="Next"><SkipForward fill="currentColor" /></button>
-      <div className="prog"><i style={{ width: `${d ? (p.time / d) * 100 : 0}%` }} /></div>
+      <button className="btn icon" onClick={onOpen} aria-label="Big player" title="Big player"><Maximize2 /></button>
+      <div
+        ref={bar}
+        className="prog"
+        role="slider"
+        aria-label="Position"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(d)}
+        aria-valuenow={Math.round(p.time)}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') p.seek(Math.min(d, p.time + 5));
+          if (e.key === 'ArrowLeft') p.seek(Math.max(0, p.time - 5));
+        }}
+        onPointerDown={(e) => {
+          if (!d || e.button !== 0) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setDrag(at(e));
+        }}
+        onPointerMove={(e) => drag != null && setDrag(at(e))}
+        onPointerUp={(e) => {
+          if (drag == null) return;
+          p.seek(at(e) * d);
+          setDrag(null);
+        }}
+        onPointerCancel={() => setDrag(null)}
+      >
+        <i style={{ width: `${shown * 100}%` }} />
+      </div>
     </div>
   );
 }
