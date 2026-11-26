@@ -441,7 +441,13 @@ export function moveFile(profile, fromRel, toRel) {
     for (let i = 2; fs.existsSync(to); i++) to = absPath(profile, toRel.replace(new RegExp(`${ext.replace('.', '\\.')}$`), ` (${i})${ext}`));
   }
   fs.mkdirSync(path.dirname(to), { recursive: true });
-  fs.renameSync(from, to);
+  try {
+    fs.renameSync(from, to);
+  } catch (e) {
+    if (e.code !== 'EXDEV') throw e;
+    fs.copyFileSync(from, to); // another disk mounted inside the library
+    fs.rmSync(from);
+  }
   for (const side of ['.lrc', '.txt']) {
     const s = from.replace(/\.[^.]+$/, side);
     if (fs.existsSync(s)) fs.renameSync(s, to.replace(/\.[^.]+$/, side));

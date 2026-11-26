@@ -166,10 +166,23 @@ function JobsButton() {
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [open]);
+  // The busiest running job, for the line under the top bar and the label.
+  const lead = running.find((j) => j.status === 'running') || running[0];
+  const pct = lead?.progress ? Math.round(lead.progress * 100) : null;
   return (
     <>
-      <button className={cx('btn icon ghost', running.length && 'on')} onClick={() => setOpen((o) => !o)} aria-label="Activity" title="Activity">
+      {lead && (
+        <>
+          <div className={cx('activity-line', pct == null && 'indeterminate')} style={pct != null ? { '--p': `${pct}%` } : undefined} aria-hidden="true" />
+          <button className="activity-label hide-sm" onClick={() => setOpen((o) => !o)} title="See what's running">
+            <span className="ellipsis">{lead.title}</span>
+            <span className="faint">{lead.detail || (pct != null ? `${pct}%` : lead.status === 'queued' ? 'waiting' : 'working')}{running.length > 1 ? ` · and ${running.length - 1} more` : ''}</span>
+          </button>
+        </>
+      )}
+      <button className={cx('btn icon ghost activity-btn', running.length && 'on')} onClick={() => setOpen((o) => !o)} aria-label={running.length ? `Activity: ${running.length} running` : 'Activity'} title="Activity">
         {running.length ? <Loader2 className="spin" style={{ animation: 'spin 1s linear infinite' }} /> : recentFail ? <CircleAlert style={{ color: 'var(--danger)' }} /> : <Activity />}
+        {running.length > 0 && <span className="activity-count">{running.length}</span>}
       </button>
       {open && (
         <div className="jobs-tray" role="dialog" aria-label="Activity">

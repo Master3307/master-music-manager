@@ -1,6 +1,6 @@
 import { cloneElement, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, CircleAlert, Info, Music2, Star, X, Check, Copy, Download, Disc3 } from 'lucide-react';
+import { ChevronRight, CircleAlert, Info, Music2, Star, X, Check, Copy, Download, Disc3, ChevronDown } from 'lucide-react';
 import { useApp } from '../lib/app.jsx';
 import { get } from '../lib/api.js';
 import { coverUrl, cx, copy } from '../lib/util.js';
@@ -513,5 +513,85 @@ export function Range({ value, max, onChange, onCommit, step = 'any', className,
       onTouchEnd={(e) => onCommit?.(Number(e.target.value))}
       onKeyUp={(e) => onCommit?.(Number(e.target.value))}
     />
+  );
+}
+
+// Jobs shown in place on a page; the dock at the bottom leaves those out.
+export const inlineJobs = new Set();
+const announceInline = () => window.dispatchEvent(new Event('mmm:inline-jobs'));
+
+/** A running job, right where it was started: bar, step, Stop; it keeps going if you leave the page. */
+export function JobProgress({ job: j, what, onDone }) {
+  useEffect(() => {
+    inlineJobs.add(j.id);
+    announceInline();
+    return () => {
+      inlineJobs.delete(j.id);
+      announceInline();
+    };
+  }, [j.id]);
+  const live = ['queued', 'running'].includes(j.status);
+  const pct = Math.round((j.progress || 0) * 100);
+  return (
+    <div className={cx('panel job-progress', !live && j.status)} role="status" aria-live="polite">
+      <div className="row">
+        {live ? <Spinner size={16} /> : null}
+        <b className="grow">{live ? what || j.title : j.status === 'done' ? `${what || j.title}: done` : j.status === 'cancelled' ? 'Stopped' : `${what || j.title}: failed`}</b>
+        {live && <span className="faint tabular" style={{ fontSize: 13 }}>{j.progress ? `${pct}%` : ''}</span>}
+        {live ? (
+          <button className="btn small ghost" onClick={() => fetch(`/api/jobs/${j.id}/cancel`, { method: 'POST', headers: { 'X-MMM': '1' } })}>Stop</button>
+        ) : (
+          <button className="btn small" onClick={onDone}>OK</button>
+        )}
+      </div>
+      {live && <Progress value={j.progress} indeterminate={!j.progress} />}
+      <div className="faint" style={{ fontSize: 12.5 }}>
+        {live ? `${j.detail || (j.status === 'queued' ? 'Waiting for its turn…' : 'Working…')} · You can leave this page, it keeps going (top right shows it).` : j.status === 'failed' ? j.error : 'Finished.'}
+      </div>
+    </div>
+  );
+}
+
+/** Bottom-right: the jobs you started (and aren't looking at in place), with progress and Stop. */
+export function JobDock() {
+  const { jobs, watched, unwatch } = useApp();
+  const [, force] = useState(0);
+  const [small, setSmall] = useState(false);
+  useEffect(() => {
+    const fn = () => force((x) => x + 1);
+    window.addEventListener('mmm:inline-jobs', fn);
+    return () => window.removeEventListener('mmm:inline-jobs', fn);
+  }, []);
+  const list = watched.map((id) => jobs[id]).filter((j) => j && !inlineJobs.has(j.id));
+  // Finished ones stay a moment with a tick, then go.
+  useEffect(() => {
+    const done = list.filter((j) => !['queued', 'running'].includes(j.status));
+    if (!done.length) return;
+    const t = setTimeout(() => done.forEach((j) => unwatch(j.id)), 4000);
+    return () => clearTimeout(t);
+  }, [list.map((j) => `${j.id}:${j.status}`).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!list.length) return null;
+  return (
+    <div className={cx('job-dock', small && 'small')} role="status" aria-live="polite">
+      <button className="job-dock-head" onClick={() => setSmall(!small)} aria-expanded={!small}>
+        <Spinner size={13} /> <span className="grow">{list.filter((j) => ['queued', 'running'].includes(j.status)).length || 'No'} running</span>
+        <ChevronDown size={15} style={{ transform: small ? 'rotate(180deg)' : 'none' }} />
+      </button>
+      {!small &&
+        list.map((j) => {
+          const live = ['queued', 'running'].includes(j.status);
+          return (
+            <div key={j.id} className="job-dock-item">
+              <div className="row" style={{ gap: 8 }}>
+                {live ? null : j.status === 'done' ? <Check size={14} style={{ color: 'var(--ok)' }} /> : <X size={14} style={{ color: 'var(--danger)' }} />}
+                <span className="grow ellipsis" title={j.title}>{j.title}</span>
+                {live && <button className="btn icon small ghost" title="Stop" aria-label="Stop" onClick={() => fetch(`/api/jobs/${j.id}/cancel`, { method: 'POST', headers: { 'X-MMM': '1' } })}><X /></button>}
+              </div>
+              {live && <Progress value={j.progress} indeterminate={!j.progress} />}
+              <div className="faint ellipsis" style={{ fontSize: 11.5 }}>{live ? j.detail || (j.status === 'queued' ? 'Waiting…' : 'Working…') : j.status === 'done' ? 'Done' : j.error || 'Stopped'}</div>
+            </div>
+          );
+        })}
+    </div>
   );
 }

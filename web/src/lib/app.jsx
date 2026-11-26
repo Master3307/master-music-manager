@@ -164,7 +164,11 @@ export function AppProvider({ children }) {
   }, [me]);
 
   /** Resolve when a job ends (for "do X, then refresh"). */
+  // Jobs started from the interface: the dock at the bottom shows their progress.
+  const [watched, setWatched] = useState([]);
+  const unwatch = useCallback((id) => setWatched((w) => w.filter((x) => x !== id)), []);
   const afterJob = useCallback((id) => new Promise((resolve) => {
+    setWatched((w) => (w.includes(id) ? w : [...w, id].slice(-8)));
     jobWaiters.current.set(id, resolve);
     get(`jobs/${id}`).then((j) => {
       if (!['queued', 'running'].includes(j.status)) {
@@ -219,7 +223,7 @@ export function AppProvider({ children }) {
 
   const value = {
     ready, me, loadMe, settings, setSettings, loadSettings, saveSetting, resetMyLook, profiles, loadProfiles, profile, pid: profile?.id, setPid, caps,
-    toast, fail, toasts, jobs, logs, afterJob, themes, fields, update, setUpdate,
+    toast, fail, toasts, jobs, logs, afterJob, watched, unwatch, themes, fields, update, setUpdate,
     isAdmin: me?.perms?.includes('manage') || false,
     can: (perm) => Boolean(me?.perms?.includes(perm)),
     listenOnly: Boolean(me?.listenOnly),

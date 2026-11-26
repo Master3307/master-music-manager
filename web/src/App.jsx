@@ -5,7 +5,7 @@ import { usePlayer } from './lib/player.jsx';
 import { Topbar, Rail, SubNav, Toasts, useInboxCount } from './components/Shell.jsx';
 import { Deck, Capsule } from './components/Deck.jsx';
 import { TourOffer } from './components/Tour.jsx';
-import { Spinner } from './components/ui.jsx';
+import { Spinner, JobDock } from './components/ui.jsx';
 import { store, cx } from './lib/util.js';
 import { get } from './lib/api.js';
 import { useMenus } from './components/menus.jsx';
@@ -137,6 +137,7 @@ function Shell() {
       <Toasts />
       <TourOffer />
       <Shortcuts />
+      <JobDock />
     </div>
   );
 }

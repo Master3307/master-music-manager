@@ -144,10 +144,10 @@ async function copySong(hash, from, fromItem, to) {
     const rel = uniqueRel(dst, fromItem.path);
     const out = lib.absPath(dst, rel);
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.copyFileSync(src, `${out}.part`);
+    await fs.promises.copyFile(src, `${out}.part`); // async: the server keeps answering
     fs.renameSync(`${out}.part`, out);
     const lrc = src.replace(/\.[^.]+$/, '.lrc');
-    if (!from.nodeId && fs.existsSync(lrc)) fs.copyFileSync(lrc, out.replace(/\.[^.]+$/, '.lrc'));
+    if (!from.nodeId && fs.existsSync(lrc)) await fs.promises.copyFile(lrc, out.replace(/\.[^.]+$/, '.lrc'));
     const t = await lib.rescanFile(dst, rel);
     db.prepare('UPDATE tracks SET audio_hash = ? WHERE id = ?').run(hash, t.id);
     return rel;
@@ -173,7 +173,7 @@ async function updateSong(from, fromItem, to, toItem) {
   const track = lib.byId(dp.id, toItem.id);
   if (track) lib.createRestorePoint(dp, track, 'Before sync');
   const out = lib.absPath(dp, toItem.path);
-  fs.copyFileSync(lib.absPath(sp, fromItem.path), `${out}.part`);
+  await fs.promises.copyFile(lib.absPath(sp, fromItem.path), `${out}.part`);
   fs.renameSync(`${out}.part`, out);
   const t = await lib.rescanFile(dp, toItem.path);
   db.prepare('UPDATE tracks SET audio_hash = (SELECT audio_hash FROM tracks WHERE id = ?) WHERE id = ?').run(fromItem.id, t.id);

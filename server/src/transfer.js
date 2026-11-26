@@ -76,10 +76,10 @@ export function register(app) {
                     const rel = uniqueRel(dst, t.path);
                     const out = lib.absPath(dst, rel);
                     fs.mkdirSync(path.dirname(out), { recursive: true });
-                    fs.copyFileSync(abs, out);
+                    await fs.promises.copyFile(abs, out); // async: big files on another disk don't stall the server
                     for (const side of ['.lrc']) {
                       const s = abs.replace(/\.[^.]+$/, side);
-                      if (fs.existsSync(s)) fs.copyFileSync(s, out.replace(/\.[^.]+$/, side));
+                      if (fs.existsSync(s)) await fs.promises.copyFile(s, out.replace(/\.[^.]+$/, side));
                     }
                     const nt = await lib.rescanFile(dst, rel);
                     if (hash) db.prepare('UPDATE tracks SET audio_hash = ? WHERE id = ?').run(hash, nt.id);

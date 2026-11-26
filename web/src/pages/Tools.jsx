@@ -5,16 +5,17 @@ import { useApp, useLoad } from '../lib/app.jsx';
 import { get, post, put, del, download } from '../lib/api.js';
 import { fmtSize, plural, ago, copy, cx } from '../lib/util.js';
 import { useMenus } from '../components/menus.jsx';
-import { Empty, Field, Notice, Spinner, Segmented, Toggle, useConfirm, Modal } from '../components/ui.jsx';
+import { Empty, Field, Notice, Spinner, Segmented, Toggle, useConfirm, Modal, JobProgress } from '../components/ui.jsx';
 
 const VARS = ['{title}', '{artist}', '{album}', '{albumartist}', '{folderartist}', '{primaryartist}', '{year}', '{track:2}', '{disc}', '{genre:first}', '{label}', '{ext}', '{artist:initial}', '{album|title}', '{?disctotal>1:CD{disc}/}', '{tag.NAME}'];
 
 export function Organize() {
-  const { pid, caps, settings, saveSetting, fail, toast, afterJob } = useApp();
+  const { pid, caps, settings, saveSetting, fail, toast, afterJob, jobs } = useApp();
   const [tpl, setTpl] = useState(settings?.library?.template || '');
   const [query, setQuery] = useState('');
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [moving, setMoving] = useState(null); // the job moving the files
   const dirty = tpl !== settings?.library?.template;
   const run = async () => {
     setBusy(true);
@@ -29,9 +30,9 @@ export function Organize() {
   const apply = async () => {
     try {
       const r = await post(`p/${pid}/organize`, { ...(query ? { query } : {}), apply: true });
-      toast(`Moving ${plural(preview.total, 'file')}…`);
+      setMoving(r.job);
       setPreview(null);
-      afterJob(r.job).then((j) => toast(j.status === 'done' ? `Moved ${j.result.moved} files` : j.error));
+      afterJob(r.job).then((j) => toast(j.status === 'done' ? `Moved ${j.result.moved} files` : j.error, { kind: j.status === 'done' ? 'ok' : 'error' }));
     } catch (e) {
       fail(e);
     }
@@ -45,6 +46,7 @@ export function Organize() {
           <p className="page-sub">Rename and move files so the folders follow one layout. You see every move before anything happens.</p>
         </div>
       </div>
+      {moving && jobs[moving] && <JobProgress job={jobs[moving]} onDone={() => setMoving(null)} what="Moving files" />}
       <div className="panel">
         <Field label="Folder layout" hint="Folders are separated by /. The file extension is added for you.">
           <input className="input mono" value={tpl} onChange={(e) => setTpl(e.target.value)} spellCheck={false} />
