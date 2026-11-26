@@ -89,19 +89,64 @@ export function PlayerProvider({ children }) {
   // Load the current song.
   const loadedUid = useRef(null);
   const wantPlay = useRef(false);
+  const currentRef = useRef(null);
+  currentRef.current = current;
   useEffect(() => {
     const a = audio.current;
     if (!a || !current) return;
     if (loadedUid.current === current.uid) return;
+    const firstLoad = loadedUid.current === null;
     loadedUid.current = current.uid;
     setError(null);
     a.src = current.radio || `/api/p/${current.pid}/stream/${encodeURIComponent(streamKey(current))}`;
     setTime(0);
     setDuration(current.duration || 0);
+    // After a reload: back to where you were in this song, ready to go on.
+    const saved = firstLoad && !current.radio ? store.get('resume', null) : null;
+    if (saved?.uid === current.uid && saved.t > 2) {
+      const at = () => {
+        if (!a.duration || saved.t < a.duration - 3) {
+          a.currentTime = saved.t;
+          setTime(saved.t);
+        }
+      };
+      a.addEventListener('loadedmetadata', at, { once: true });
+      setTime(saved.t);
+      return;
+    }
     if (wantPlay.current) a.play().catch(() => {});
     // Now playing on the service.
     if (!current.radio) post(`p/${current.pid}/scrobble`, { key: streamKey(current), submission: false }).catch(() => {});
   }, [current]);
+  // Remember the position every few seconds and when the page goes away.
+  useEffect(() => {
+    const a = audio.current;
+    if (!a) return;
+    let last = 0;
+    const save = () => {
+      const c = currentRef.current;
+      if (c && !c.radio && a.currentTime > 0) store.set('resume', { uid: c.uid, t: Math.floor(a.currentTime) });
+    };
+    const tick = () => {
+      if (Date.now() - last > 3000) {
+        last = Date.now();
+        save();
+      }
+    };
+    const hidden = () => document.visibilityState === 'hidden' && save();
+    a.addEventListener('timeupdate', tick);
+    a.addEventListener('pause', save);
+    a.addEventListener('seeked', save);
+    window.addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      a.removeEventListener('timeupdate', tick);
+      a.removeEventListener('pause', save);
+      a.removeEventListener('seeked', save);
+      window.removeEventListener('pagehide', save);
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, []);
 
   // Ambient colour + Media Session.
   useEffect(() => {
