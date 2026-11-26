@@ -9,6 +9,7 @@ import { Spinner } from './components/ui.jsx';
 import { store, cx } from './lib/util.js';
 import { get } from './lib/api.js';
 import { useMenus } from './components/menus.jsx';
+import { Shortcuts } from './components/Shortcuts.jsx';
 
 const page = (f) => lazy(f);
 const Login = page(() => import('./pages/Login.jsx'));
@@ -135,6 +136,7 @@ function Shell() {
       {(!deck || small) && p.current && <Capsule onOpen={() => setDeck(true)} />}
       <Toasts />
       <TourOffer />
+      <Shortcuts />
     </div>
   );
 }

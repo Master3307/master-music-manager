@@ -64,12 +64,15 @@ Needs Node 22+ and FFmpeg. Optional: spotDL (Spotify links), yt-dlp (YouTube and
 - Files sorted as `Artist/Album/01 - Title` (or any layout you like), with artist separators (`" / "` by default), names that are never split (“Simon & Garfunkel”), and a `!Misc` folder for unknown songs if you want one.
 - Covers (upload, link, paste, a frame of a video) with an image editor. Animated GIFs stay animated, even after editing. Lyrics editor with tap-to-sync and lookups. Audio editor: trim, cut, fades, loudness, speed, pitch, EQ, nightcore, slowed + reverb and more, with restore points for every change.
 - Duplicates: identical audio is found even when the tags differ. Look-alikes can be played side by side before you choose which one stays.
-- “Fill in missing details” finds the right names and covers online (MusicBrainz), and recognizing songs from their sound uses AcoustID, with unofficial Shazam as an option.
+- **Fill in everything**: paste any links (Spotify, YouTube, Deezer, Apple Music, MusicBrainz, Bandcamp …), drop a file, or nothing at all. It merges what they say, adds what it finds by itself (MusicBrainz in depth: people, label, catalog number, barcode, track and disc counts, every id; Deezer; Apple Music), measures BPM and key from the sound, offers covers and lyrics to look at first, and lets you choose where sources disagree. Recognizing songs from their sound uses AcoustID, with unofficial Shazam as an option.
+- Replace a song’s audio (a file or any link) and keep its tags, cover and lyrics.
 - Smart playlists (Navidrome rules) with a visual editor and a live preview.
 
 **Add**
 - Paste Spotify, YouTube Music, YouTube, SoundCloud, Bandcamp … links, or `youtube-link|spotify-link` for YouTube’s audio with Spotify’s names and cover.
 - Drop files, whole folders or archives (zip, rar, 7z, tar, also archives inside archives). Big files upload in parts and resume.
+- Paste a link anywhere in the app to get it, drop files anywhere to upload them, or share a link to the installed app from your phone.
+- Add a folder and leave the files where they are; take songs out of the app without touching their files.
 - Everything waits for a quick check before it goes into your library, and you choose the format (MP3 by default, lossless stays lossless).
 
 **Share and more**
@@ -78,6 +81,7 @@ Needs Node 22+ and FFmpeg. Optional: spotDL (Spotify links), yt-dlp (YouTube and
 - Several servers and folders. Several computers linked together: they share song lists, play each other’s songs, back each other up, and keep working when one is off.
 - Keep places completely in sync: two servers, folders or computers each end up with every song of the others (compared by sound, so nothing is copied twice), optionally with edits and removals following.
 - Accounts with roles (admin, user, visitor), two-step login, Discord login, logging in with your Navidrome / Jellyfin account, and a mode where anyone can listen but only you can change things.
+- Installs as an app on phones and computers (shortcuts, share target, works offline to start).
 - Themes, your own CSS themes (with a header for name, author, version and an update address), sharing themes with a link, a simple player mode, light and dark.
 - WebDAV, backups, a full privacy mode (nothing leaves your network) and the `mmm` command.
 - Read-only API keys for dashboards (HomeSite, Homarr, Homepage …): what’s playing, library numbers, new albums, search and covers under `/api/integration`.
