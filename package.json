@@ -24,7 +24,7 @@
     "doctor": "node scripts/mmm.mjs doctor",
     "update": "node scripts/mmm.mjs update",
     "mmm": "node scripts/mmm.mjs",
-    "test": "node --test tests/",
+    "test": "node --test tests/*.test.mjs",
     "lint": "for f in $(git ls-files 'server/**/*.js' 'scripts/*.mjs'); do node --check $f || exit 1; done",
     "plugin:build": "bash plugin/build.sh",
     "brand": "node scripts/brand.mjs"
