@@ -109,7 +109,9 @@ export function PlayerProvider({ children }) {
     const art = coverUrl(current.pid, current.coverArt, 300);
     if (settings?.appearance?.graphics !== false) dominantColor(art).then((c) => c && document.documentElement.style.setProperty('--ambient', c));
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: current.title, artist: current.artist || '', album: current.album || '', artwork: art ? [{ src: art, sizes: '300x300' }] : [] });
+      // Several sizes: phones, the Windows / macOS overlay and car displays each pick one.
+      const artwork = current.coverArt ? [96, 192, 256, 512].map((n) => ({ src: new URL(coverUrl(current.pid, current.coverArt, n), location.href).href, sizes: `${n}x${n}` })) : [{ src: new URL('/icon-512.png', location.href).href, sizes: '512x512', type: 'image/png' }];
+      navigator.mediaSession.metadata = new MediaMetadata({ title: current.title || current.name || 'Unknown song', artist: current.artist || '', album: current.album || (current.radio ? 'Radio' : ''), artwork });
     }
     document.title = `${current.title}${current.artist ? ` · ${current.artist}` : ''}`;
   }, [current, settings?.appearance?.graphics]);
@@ -397,16 +399,74 @@ export function PlayerProvider({ children }) {
     setIndex(i);
   }, []);
 
-  // Media keys.
+  // Media keys, headset buttons, the lock screen and the OS media overlay.
+  const media = useRef({});
+  media.current = { play, pause, next, prev, seek, time, duration, playing };
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
     const ms = navigator.mediaSession;
-    ms.setActionHandler('play', play);
-    ms.setActionHandler('pause', pause);
-    ms.setActionHandler('nexttrack', () => next());
-    ms.setActionHandler('previoustrack', prev);
-    ms.setActionHandler('seekto', (e) => seek(e.seekTime));
-  }, [play, pause, next, prev, seek]);
+    const m = () => media.current;
+    const handlers = {
+      play: () => m().play(),
+      pause: () => m().pause(),
+      stop: () => {
+        m().pause();
+        m().seek(0);
+      },
+      nexttrack: () => m().next(),
+      previoustrack: () => m().prev(),
+      seekto: (e) => m().seek(Math.max(0, e.seekTime)),
+      seekbackward: (e) => m().seek(Math.max(0, (audio.current?.currentTime || 0) - (e.seekOffset || 10))),
+      seekforward: (e) => m().seek(Math.min(m().duration || Infinity, (audio.current?.currentTime || 0) + (e.seekOffset || 10))),
+    };
+    for (const [action, fn] of Object.entries(handlers)) {
+      try {
+        ms.setActionHandler(action, fn);
+      } catch {} // not every browser knows every action
+    }
+    return () => {
+      for (const action of Object.keys(handlers)) {
+        try {
+          ms.setActionHandler(action, null);
+        } catch {}
+      }
+    };
+  }, []);
+  // Tell the system whether we play, and where we are (its progress bar and scrubbing).
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = !current ? 'none' : playing ? 'playing' : 'paused';
+  }, [current, playing]);
+  useEffect(() => {
+    const ms = navigator.mediaSession;
+    if (!ms?.setPositionState) return;
+    const a = audio.current;
+    const sync = () => {
+      try {
+        if (current && Number.isFinite(a.duration) && a.duration > 0) ms.setPositionState({ duration: a.duration, position: Math.min(a.currentTime, a.duration), playbackRate: a.playbackRate || 1 });
+        else ms.setPositionState();
+      } catch {}
+    };
+    const evs = ['loadedmetadata', 'durationchange', 'seeked', 'ratechange', 'play', 'pause'];
+    for (const ev of evs) a.addEventListener(ev, sync);
+    sync();
+    return () => {
+      for (const ev of evs) a.removeEventListener(ev, sync);
+    };
+  }, [current]);
+  // Media keys on keyboards in browsers without the Media Session API.
+  useEffect(() => {
+    if ('mediaSession' in navigator) return;
+    const onKey = (e) => {
+      const m = media.current;
+      if (e.key === 'MediaPlayPause') m.playing ? m.pause() : m.play();
+      else if (e.key === 'MediaTrackNext') m.next();
+      else if (e.key === 'MediaTrackPrevious') m.prev();
+      else if (e.key === 'MediaStop') m.pause();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Keyboard: space, ←/→ (seek), shift+←/→ (prev/next), m (mute).
   useEffect(() => {

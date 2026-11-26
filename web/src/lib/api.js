@@ -125,10 +125,20 @@ export function events(handlers) {
       if (!closed) retry = setTimeout(open, 3000);
     };
   };
-  open();
+  // A connection that opens before the page has finished loading keeps the
+  // browser's loading spinner turning forever: start it once the page is done.
+  let waiting = null;
+  if (document.readyState === 'complete') retry = setTimeout(open, 0);
+  else {
+    waiting = () => {
+      if (!closed) retry = setTimeout(open, 50);
+    };
+    window.addEventListener('load', waiting, { once: true });
+  }
   return () => {
     closed = true;
     clearTimeout(retry);
+    if (waiting) window.removeEventListener('load', waiting);
     es?.close();
   };
 }
