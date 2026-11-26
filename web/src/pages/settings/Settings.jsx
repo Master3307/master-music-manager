@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useSearchParams } from 'react-router';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { NavLink, Navigate, Route, Routes, useNavigate, useSearchParams } from 'react-router';
 import {
   Settings as Cog, Palette, Library, FolderTree, FileAudio, Download, Play, Share2, Shield, User, Network, Puzzle, Archive, ScrollText, RefreshCw, Plus, Trash2, Pencil, Wifi, WifiOff,
   HardDrive, ExternalLink, Check, Copy as CopyIcon, ArrowLeftRight,
@@ -34,18 +34,133 @@ const NAV = [
   ['system', 'System & updates', RefreshCw],
 ];
 
-/** A settings section bound to one settings key; saves on every change. */
+// Changes wait as drafts until you press Save (or Revert). They live outside
+// the page, so they survive switching between settings pages, and even
+// leaving Settings by the back button: they are still there when you return.
+const draftStore = { drafts: {} };
+const DraftContext = createContext(null);
+// The look applies at once (it's personal and shows itself as a preview).
+const INSTANT = new Set(['appearance']);
+const KEY_LABELS = { public: 'General', instance: 'General', auth: 'Account & security', library: 'Library & naming', duplicates: 'Library & naming', convert: 'Import & formats', downloads: 'Downloads', player: 'Player', shares: 'Sharing', privacy: 'Privacy & online' };
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** A settings section bound to one settings key: [value with your drafts, change]. */
 export function useSection(key) {
   const { settings, saveSetting, fail } = useApp();
-  const [v, setV] = useState(settings?.[key] || {});
-  useEffect(() => setV(settings?.[key] || {}), [settings, key]);
-  const set = (patchObj) => {
-    const next = { ...v, ...patchObj };
-    setV(next);
-    clearTimeout(set.t);
-    set.t = setTimeout(() => saveSetting(key, next).catch(fail), 350);
-  };
-  return [v, set];
+  const d = useContext(DraftContext);
+  const base = settings?.[key] || {};
+  if (INSTANT.has(key) || !d) return [base, (patchObj) => saveSetting(key, { ...base, ...patchObj }).catch(fail)];
+  const draft = d.drafts[key];
+  return [draft ? { ...base, ...draft } : base, (patchObj) => d.change(key, patchObj, base)];
+}
+
+function useDraftState() {
+  const { settings, saveSetting, fail, toast } = useApp();
+  const [drafts, setDrafts] = useState(() => draftStore.drafts);
+  useEffect(() => {
+    draftStore.drafts = drafts;
+  }, [drafts]);
+  const change = useCallback((key, patchObj, base) => {
+    setDrafts((all) => {
+      const mine = { ...all[key], ...patchObj };
+      // Changed back to what is saved: not a change any more.
+      for (const k of Object.keys(mine)) if (same(mine[k], base[k])) delete mine[k];
+      const next = { ...all };
+      if (Object.keys(mine).length) next[key] = mine;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+  const [saving, setSaving] = useState(false);
+  const save = useCallback(async () => {
+    setSaving(true);
+    const left = { ...drafts };
+    try {
+      for (const [key, d] of Object.entries(drafts)) {
+        await saveSetting(key, { ...(settings?.[key] || {}), ...d });
+        delete left[key];
+      }
+      toast('Saved', { kind: 'ok' });
+      return true;
+    } catch (e) {
+      fail(e);
+      return false;
+    } finally {
+      setDrafts(left);
+      setSaving(false);
+    }
+  }, [drafts, settings, saveSetting, fail, toast]);
+  const revert = useCallback(() => setDrafts({}), []);
+  const dirty = Object.keys(drafts).length > 0;
+  return { drafts, change, save, revert, dirty, saving };
+}
+
+/** The bar at the bottom while there are unsaved changes, and the guard against losing them. */
+function SaveBar({ d }) {
+  const navigate = useNavigate();
+  const [leaving, setLeaving] = useState(null);
+  const ref = useRef(d);
+  ref.current = d;
+  useEffect(() => {
+    if (!d.dirty) return;
+    // Reload, closing the tab, typing another address: the browser asks.
+    const beforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    // Links out of Settings: we ask (save, throw away or stay).
+    const onClick = (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const a = e.target.closest?.('a[href]');
+      if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+      const u = new URL(a.href, location.href);
+      if (u.origin !== location.origin || u.pathname.startsWith('/settings')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setLeaving(`${u.pathname}${u.search}${u.hash}`);
+    };
+    // Ctrl + S saves.
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        ref.current.save();
+      }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    document.addEventListener('click', onClick, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnload);
+      document.removeEventListener('click', onClick, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [d.dirty]);
+  if (!d.dirty) return null;
+  const pages = [...new Set(Object.keys(d.drafts).map((k) => KEY_LABELS[k] || k))];
+  return (
+    <>
+      <div className="save-bar" role="region" aria-label="Unsaved changes">
+        <span className="grow">Unsaved changes in <b>{pages.join(', ')}</b></span>
+        <button className="btn ghost" onClick={d.revert} disabled={d.saving}>Revert</button>
+        <button className="btn primary" onClick={d.save} disabled={d.saving}>{d.saving ? <Spinner size={14} /> : <Check />} Save</button>
+      </div>
+      {leaving && (
+        <Modal
+          title="Save your changes?"
+          onClose={() => setLeaving(null)}
+          footer={
+            <>
+              <button className="btn ghost" onClick={() => setLeaving(null)}>Stay here</button>
+              <button className="btn ghost danger" onClick={() => { d.revert(); const to = leaving; setLeaving(null); navigate(to); }}>Throw them away</button>
+              <button className="btn primary" onClick={async () => { const to = leaving; if (await d.save()) { setLeaving(null); navigate(to); } }}>Save and go</button>
+            </>
+          }
+        >
+          <p className="muted" style={{ margin: 0 }}>You changed settings in {pages.join(', ')} and didn’t save them yet.</p>
+        </Modal>
+      )}
+    </>
+  );
 }
 
 export function Section({ title, children, description }) {
@@ -59,8 +174,14 @@ export function Section({ title, children, description }) {
 }
 
 export default function Settings() {
-  const { isAdmin } = useApp();
+  const { isAdmin, toast } = useApp();
+  const d = useDraftState();
+  // Left by the back button with unsaved changes: they wait for you.
+  const dirty = useRef(false);
+  dirty.current = d.dirty;
+  useEffect(() => () => dirty.current && toast('Your unsaved settings are kept. Open Settings to save or revert them.'), []);
   return (
+    <DraftContext.Provider value={d}>
     <div className="settings" style={{ marginTop: 10 }}>
       <nav className="settings-nav" aria-label="Settings">
         {NAV.filter(([id]) => isAdmin || ['look', 'account', 'player'].includes(id)).map(([id, label, I]) => (
@@ -89,8 +210,10 @@ export default function Settings() {
           <Route path="logs" element={<Logs />} />
           <Route path="system" element={<System />} />
         </Routes>
+        <SaveBar d={d} />
       </div>
     </div>
+    </DraftContext.Provider>
   );
 }
 

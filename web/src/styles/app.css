@@ -589,3 +589,8 @@ img { display: block; }
 .quick-btn .qi { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
 .quick-btn .qi svg { width: 22px; height: 22px; }
 .fullplayer::before { content: ''; position: absolute; inset: 0; z-index: -1; background: color-mix(in oklab, var(--bg) 58%, transparent); }
+
+/* Unsaved settings */
+.save-bar { position: sticky; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: 10px; margin-top: 18px; padding: 10px 12px 10px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line)); box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.35); font-size: 13.5px; animation: save-bar-in 0.18s ease-out; }
+@keyframes save-bar-in { from { transform: translateY(8px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .save-bar { animation: none; } }
