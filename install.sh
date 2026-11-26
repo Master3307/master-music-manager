@@ -130,9 +130,21 @@ else
   git clone -q --depth 1 --branch "$BRANCH" "$REPO" "$DIR"
 fi
 cd "$DIR"
+LOG="${TMPDIR:-/tmp}/mmm-install.log"
+: > "$LOG"
+run_logged() {
+  if ! "$@" >>"$LOG" 2>&1; then
+    printf '\n%sThis step failed: %s%s\n' "$red" "$*" "$off" >&2
+    tail -n 25 "$LOG" | sed 's/^/  │ /' >&2
+    printf '  %sFull output: %s%s\n' "$dim" "$LOG" "$off" >&2
+    trap - ERR
+    exit 1
+  fi
+}
 info "Installing its parts (this takes a minute)"
-pnpm install --frozen-lockfile --reporter=silent
-pnpm build >/dev/null
+# pnpm switches itself to the version in package.json (packageManager).
+run_logged pnpm install --frozen-lockfile
+run_logged pnpm build
 info "Version $(node -p 'require("./package.json").version')"
 
 # ---- settings + service ----
