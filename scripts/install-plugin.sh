@@ -133,7 +133,8 @@ nd() {
   elif command -v sudo >/dev/null 2>&1; then (cd "$DATA" && sudo -u "$NDUSER" -- "${cmd[@]}")
   else die "Navidrome runs as '$NDUSER'. Run this with sudo."; fi
 }
-quiet() { grep -vE '^[ _|\\/]+|Version: |level=(info|debug)|No configuration file' || true; }
+# Drop Navidrome's ASCII banner (lines of only these characters) and info logs.
+quiet() { grep -vE "^[][ _|\\/\`'.,()-]*\$|Version: |level=(info|debug)|No configuration file" || true; }
 
 # ── The plugin file ───────────────────────────────────────────────────
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
@@ -155,7 +156,7 @@ else
   if [ -w "$PLUGINS" ]; then cp "$tmp/master-music-manager.ndp" "$PLUGINS/"; else sudo cp "$tmp/master-music-manager.ndp" "$PLUGINS/"; fi
   chown "$NDUSER:" "$PLUGINS" "$PLUGINS/master-music-manager.ndp" 2>/dev/null || sudo chown "$NDUSER:" "$PLUGINS" "$PLUGINS/master-music-manager.ndp" 2>/dev/null || true
 fi
-nd validate "$PLUGINS/master-music-manager.ndp" 2>&1 | quiet | grep -q OK || die "Navidrome didn't accept the plugin file. Is Navidrome 0.60 or newer?"
+nd validate "$PLUGINS/master-music-manager.ndp" 2>&1 | quiet | grep -q ': OK$' || die "Navidrome didn't accept the plugin file. Is Navidrome 0.60 or newer?"
 nd rescan 2>&1 | quiet >/dev/null
 nd list 2>&1 | grep -q '^master-music-manager ' || die "Navidrome doesn't list the plugin. Check that plugins are on (Plugins.Enabled = true in its config)."
 say "${ok}✓${off} Installed"
