@@ -307,9 +307,10 @@ export async function write(file, edit) {
   const patch = buildPatch(file, edit);
   if (!Object.keys(patch).length) return { method: 'none' };
   try {
-    // replaceId3 rewrites old ID3v2.3 tags as v2.4; other formats refuse the option.
-    const id3 = ['mp3', 'aac', 'wav'].includes(formatOf(file));
-    await updateFile(file, patch, { ...(id3 ? { replaceId3: true } : {}), atomic: true });
+    // Never replaceId3: it drops every frame not in the patch (cover, album,
+    // genre…). Older ID3v2.3 files are refused here and go through FFmpeg,
+    // which keeps all their tags and the cover and writes v2.4.
+    await updateFile(file, patch, { atomic: true });
     return { method: 'native' };
   } catch (e) {
     if (!/Unsupported|not supported|Only iTunes/i.test(e.message || '') && e.name !== 'UnsupportedFormatError' && e.name !== 'UnsupportedFeatureError') throw e;

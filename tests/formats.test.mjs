@@ -35,3 +35,36 @@ test('commands: parse and plan', () => {
   const wild = plan([{ id: 1, title: 'Song (Official Video)', path: 'x', ext: 'mp3', filename: 'x', folder: '.' }], [{ type: 'replace', field: 'title', find: ' (*)', replace: '', mode: 'wildcard' }]);
   assert.equal(wild[0].changes.title[1], 'Song');
 });
+
+// Editing tags must never lose the cover or other tags (ID3v2.3 and v2.4 MP3s, FLAC).
+test('tag edits keep the cover and the other tags', async (t) => {
+  const { execFileSync } = await import('node:child_process');
+  const fs = await import('node:fs');
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+  } catch {
+    return t.skip('FFmpeg is not installed');
+  }
+  const tags = await import('../server/src/library/tags.js');
+  const { parseFile } = await import('music-metadata');
+  const dir = fs.mkdtempSync(`${process.env.TMPDIR || '/tmp'}/mmm-tags-`);
+  const src = `${dir}/src.mp3`;
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=duration=1', '-f', 'lavfi', '-i', 'color=red:size=64x64', '-map', '0:a', '-map', '1:v', '-frames:v', '1', '-c:v', 'mjpeg', '-disposition:v', 'attached_pic', '-t', '1', '-metadata', 'album=Keep me', src]);
+  const files = {
+    'mp3 v2.3': ['-id3v2_version', '3'],
+    'mp3 v2.4': ['-id3v2_version', '4'],
+    flac: ['-c:a', 'flac'],
+  };
+  for (const [name, args] of Object.entries(files)) {
+    const f = `${dir}/${name.replace(/\W/g, '')}.${name === 'flac' ? 'flac' : 'mp3'}`;
+    execFileSync('ffmpeg', ['-v', 'error', '-i', src, '-map', '0', '-c', 'copy', ...args, f]);
+    await tags.write(f, { tags: { title: 'Edited' } });
+    await tags.write(f, { tags: { artist: 'Edited too' } });
+    const m = await parseFile(f);
+    assert.equal(m.common.title, 'Edited', name);
+    assert.equal(m.common.artist, 'Edited too', name);
+    assert.equal(m.common.album, 'Keep me', `${name}: other tags stay`);
+    assert.ok(m.common.picture?.length, `${name}: the cover stays`);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
