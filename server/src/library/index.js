@@ -194,7 +194,7 @@ export function scan(profile, { full = false, userId } = {}) {
       ctx.log(`${files.length} media files found`);
       const plan = readPlan(profile.local_path);
       if (plan.gentle) {
-        ctx.log(`${plan.detected === 'hdd' ? 'Spinning disk' : 'Disk type unknown, so treating it like a spinning disk'}: reading one file at a time in the order they lie on the disk, and pausing while music plays. Slower, but quiet and easy on the drive. (Settings → Library & naming → Disk)`);
+        ctx.log(`${plan.forced ? 'Set to spinning disk' : plan.detected === 'hdd' ? 'Spinning disk found' : 'Disk type unknown, so treating it like a spinning disk'}: reading one file at a time in the order they lie on the disk, and pausing while music plays. Slower, but quiet and easy on the drive. (Settings → Library & naming → Disk)`);
         // Only new / changed files are read; the rest is just a quick look at their size and date.
         files = await inDiskOrder(files);
       }

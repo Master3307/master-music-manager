@@ -56,7 +56,7 @@ export function readPlan(folder) {
   const mode = settings.get('library').diskMode || 'auto';
   const detected = diskKind(folder);
   const gentle = mode === 'hdd' || (mode === 'auto' && detected !== 'ssd');
-  return { gentle, detected, workers: gentle ? 1 : 6, pauseMs: gentle ? 2 : 0 };
+  return { gentle, detected, forced: mode === 'hdd', workers: gentle ? 1 : 6, pauseMs: gentle ? 2 : 0 };
 }
 
 // Streams currently playing: reading for the library waits for them.
