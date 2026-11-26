@@ -1,0 +1,12 @@
+node_modules/
+web/dist/
+data/
+.data/
+*.log
+.env
+plugin/*.wasm
+plugin/*.ndp
+plugin/dist/
+.DS_Store
+brand/.tmp-*
+web/dist/

@@ -1,0 +1,36 @@
+# Push a tag v1.2.3 → a GitHub release with the built app.
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile && pnpm test && pnpm build
+      - name: Package
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          tar --exclude=node_modules --exclude=.git -czf master-music-manager-$V.tar.gz \
+            package.json pnpm-lock.yaml pnpm-workspace.yaml install.sh LICENSE NOTICE README.md server scripts web brand
+      - name: Notes
+        run: |
+          PREV=$(git tag -l 'v*' --sort=-v:refname | sed -n 2p)
+          { echo "## Changes"; git log --pretty='- %s' ${PREV:+$PREV..}HEAD -- . ':!plugin' | head -80;
+            echo; echo "Update from the app (Settings → System & updates), with \`mmm update\`, or run the installer again:";
+            echo '```'; echo 'curl -fsSL https://mm-install.master3307.org | bash'; echo '```'; } > notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Master Music Manager ${{ github.ref_name }}
+          body_path: notes.md
+          files: master-music-manager-*.tar.gz

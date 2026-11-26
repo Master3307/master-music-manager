@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+    branches: [master]
+  pull_request:
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: pnpm install --frozen-lockfile
+      - run: for f in $(git ls-files 'server/**/*.js' 'scripts/*.mjs'); do node --check "$f"; done
+      - run: bash -n install.sh
+      - run: pnpm test
+      - run: pnpm build
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - uses: acifani/setup-tinygo@v2
+        with:
+          tinygo-version: '0.44.0'
+      - run: cd plugin && go mod download && tinygo build -opt=2 -no-debug -o plugin.wasm -target wasip1 -buildmode=c-shared .

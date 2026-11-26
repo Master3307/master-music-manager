@@ -1,0 +1,48 @@
+# Push a tag plugin-v1.2.3 (or run it by hand) → master-music-manager.ndp on a release.
+name: Navidrome plugin
+on:
+  push:
+    tags: ['plugin-v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - uses: acifani/setup-tinygo@v2
+        with:
+          tinygo-version: '0.44.0'
+      - name: Build
+        working-directory: plugin
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            V=${GITHUB_REF_NAME#plugin-v}
+            jq --arg v "$V" '.version = $v' manifest.json > m.json && mv m.json manifest.json
+            sed -i "s/const version = \".*\"/const version = \"$V\"/" main.go
+          fi
+          go mod download
+          tinygo build -opt=2 -no-debug -o plugin.wasm -target wasip1 -buildmode=c-shared .
+          zip -j master-music-manager.ndp manifest.json plugin.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: master-music-manager.ndp
+          path: plugin/master-music-manager.ndp
+      - name: Notes
+        if: github.ref_type == 'tag'
+        run: |
+          PREV=$(git tag -l 'plugin-v*' --sort=-v:refname | sed -n 2p)
+          { echo "## Navidrome plugin ${GITHUB_REF_NAME#plugin-v}"; git log --pretty='- %s' ${PREV:+$PREV..}HEAD -- plugin | head -40;
+            echo; echo "Install: \`mmm plugin\` on the Navidrome machine, or copy \`master-music-manager.ndp\` into Navidrome's plugins folder. Master Music Manager tells you when a new version is out."; } > notes.md
+      - uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
+        with:
+          name: Navidrome plugin ${{ github.ref_name }}
+          body_path: notes.md
+          files: plugin/master-music-manager.ndp

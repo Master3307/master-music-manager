@@ -1,0 +1,15 @@
+Master Music Manager
+Copyright 2026 MrKoby07 (Korbinian, formerly Master3307)
+https://github.com/Master3307/master-music-manager
+https://home.master3307.org
+
+This product includes software developed by MrKoby07.
+If you use, copy or build on this code, keep this NOTICE file and credit
+MrKoby07 visibly: "Based on Master Music Manager by MrKoby07
+(https://github.com/Master3307/master-music-manager)".
+
+Third-party parts keep their own licenses:
+- Inter (OFL 1.1), JetBrains Mono (OFL 1.1) via Fontsource
+- Lucide icons (ISC)
+- spotDL (MIT), yt-dlp (Unlicense) and FFmpeg (LGPL/GPL) are used as external
+  programs and are not distributed with this software.

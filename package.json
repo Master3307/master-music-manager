@@ -1,0 +1,54 @@
+{
+  "name": "master-music-manager",
+  "version": "1.0.0",
+  "description": "A cheat tool for your music library: Navidrome, Jellyfin and OpenSubsonic manager, tag editor, downloader and player.",
+  "license": "Apache-2.0",
+  "author": "MrKoby07 (https://home.master3307.org)",
+  "repository": "github:Master3307/master-music-manager",
+  "homepage": "https://github.com/Master3307/master-music-manager",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.18.0",
+  "bin": {
+    "mmm": "scripts/mmm.mjs"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "node --watch server/src/index.js",
+    "dev:web": "vite --config web/vite.config.js",
+    "build": "vite build --config web/vite.config.js",
+    "start": "node server/src/index.js",
+    "setup": "node scripts/setup.mjs",
+    "doctor": "node scripts/mmm.mjs doctor",
+    "update": "node scripts/mmm.mjs update",
+    "mmm": "node scripts/mmm.mjs",
+    "test": "node --test tests/",
+    "lint": "for f in $(git ls-files 'server/**/*.js' 'scripts/*.mjs'); do node --check $f || exit 1; done",
+    "plugin:build": "bash plugin/build.sh",
+    "brand": "node scripts/brand.mjs"
+  },
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "better-sqlite3": "^13.2.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.3.0",
+    "music-metadata": "^13.0.1",
+    "otpauth": "^9.6.0",
+    "tar": "^7.5.23",
+    "yauzl": "^3.4.0"
+  },
+  "devDependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/onest": "^5.3.1",
+    "@tanstack/react-virtual": "^3.14.28",
+    "@vitejs/plugin-react": "^6.3.0",
+    "lucide-react": "^1.80.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^8.5.3",
+    "vite": "^8.3.8"
+  }
+}

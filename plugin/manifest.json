@@ -1,0 +1,68 @@
+{
+  "name": "Master Music Manager",
+  "author": "MrKoby07",
+  "version": "1.0.0",
+  "description": "Sends every play to Master Music Manager as it happens, copies Navidrome's listening history once, and shows the artist texts you write there.",
+  "website": "https://github.com/Master3307/master-music-manager",
+  "config": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "title": "Master Music Manager address",
+          "description": "How Navidrome reaches Master Music Manager, e.g. http://192.168.1.20:4545 (no slash at the end)"
+        },
+        "secret": {
+          "type": "string",
+          "title": "Secret",
+          "description": "Made in Master Music Manager under Settings → Navidrome plugin"
+        },
+        "syncHistory": {
+          "type": "boolean",
+          "title": "Copy the listening history",
+          "description": "Copies past plays once, then new ones every 30 minutes as a safety net.",
+          "default": true
+        },
+        "artistInfo": {
+          "type": "boolean",
+          "title": "Use artist texts from Master Music Manager",
+          "description": "Also add the plugin to Agents in navidrome.toml, e.g. Agents = \"master-music-manager,lastfm,spotify\"",
+          "default": true
+        }
+      },
+      "required": ["url", "secret"]
+    },
+    "uiSchema": {
+      "type": "VerticalLayout",
+      "elements": [
+        { "type": "Control", "scope": "#/properties/url" },
+        { "type": "Control", "scope": "#/properties/secret", "options": { "format": "password" } },
+        { "type": "Control", "scope": "#/properties/syncHistory" },
+        { "type": "Control", "scope": "#/properties/artistInfo" }
+      ]
+    }
+  },
+  "permissions": {
+    "http": {
+      "reason": "Send plays and history to your Master Music Manager, and read artist texts from it. Any host, because you choose the address.",
+      "requiredHosts": ["*"]
+    },
+    "users": {
+      "reason": "Know whose plays these are"
+    },
+    "scrobbleRetriever": {
+      "reason": "Copy the listening history to Master Music Manager"
+    },
+    "subsonicapi": {
+      "reason": "Look up song names for the history"
+    },
+    "scheduler": {
+      "reason": "Copy new history every 30 minutes"
+    },
+    "kvstore": {
+      "reason": "Remember how far the history copy got",
+      "maxSize": "1MB"
+    }
+  }
+}
