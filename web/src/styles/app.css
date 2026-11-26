@@ -652,3 +652,7 @@ img { display: block; }
   html, body, .app { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   input, textarea, select, [contenteditable='true'], [contenteditable=''] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 }
+.drop-zone { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 92px; padding: 16px; border: 1.5px dashed var(--line); border-radius: var(--radius); color: var(--text-2); cursor: pointer; text-align: center; transition: border-color .15s, background .15s; }
+.drop-zone:hover, .drop-zone.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.drop-zone.has { border-style: solid; border-color: color-mix(in oklab, var(--accent) 50%, var(--line)); }
+.drop-zone svg { width: 22px; height: 22px; flex: none; }

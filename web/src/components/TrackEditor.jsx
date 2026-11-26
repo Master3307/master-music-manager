@@ -9,16 +9,18 @@ import { ImageEditor } from './ImageEditor.jsx';
 import { LyricsEditor } from './LyricsEditor.jsx';
 import { AudioEditor } from './AudioEditor.jsx';
 import { FindDetails } from '../pages/Inbox.jsx';
+import { ReplaceAudio } from './ReplaceAudio.jsx';
 import { Wand2 } from 'lucide-react';
 
 const GROUPS = ['Main', 'People', 'Text', 'Sound', 'Release', 'Sorting', 'IDs'];
 const asText = (v) => (v == null ? '' : Array.isArray(v) ? v.join('; ') : String(v));
 
 /** Edit one song (all tabs) or many (details, custom tags, cover). */
-export function TrackEditor({ ids, onClose, onSaved }) {
+export function TrackEditor({ ids, onClose, onSaved, start }) {
   const { pid, fields, settings, fail, toast, afterJob } = useApp();
   const multi = ids.length > 1;
-  const [tab, setTab] = useState('details');
+  // start: 'find' opens the online search, 'recognize' the Recognize tab.
+  const [tab, setTab] = useState(start === 'recognize' ? 'recognize' : 'details');
   const [rows, setRows] = useState(null);
   const [detail, setDetail] = useState(null);
   const [edit, setEdit] = useState({});
@@ -30,7 +32,8 @@ export function TrackEditor({ ids, onClose, onSaved }) {
   const [group, setGroup] = useState('Main');
   const [coverOpen, setCoverOpen] = useState(false);
   const [coverV, setCoverV] = useState(0);
-  const [finding, setFinding] = useState(false);
+  const [finding, setFinding] = useState(start === 'find');
+  const [replacing, setReplacing] = useState(false);
   const confirm = useConfirm();
 
   const loadAll = async () => {
@@ -237,7 +240,17 @@ export function TrackEditor({ ids, onClose, onSaved }) {
               <Notice>Covers are stored inside the file, so every player sees them. Animated covers come from music videos (Add → upload a video) and play here and on share pages.</Notice>
             </div>
           )}
-          {tab === 'sound' && t && <AudioEditor track={t} onSaved={() => { loadAll(); onSaved?.(); }} />}
+          {tab === 'sound' && t && (
+            <>
+              <div className="panel row" style={{ padding: '10px 14px' }}>
+                <FileAudio size={18} className="faint" />
+                <span className="grow"><b>Replace the whole audio</b><span className="faint" style={{ display: 'block', fontSize: 12.5 }}>With a file or a link (YouTube, SoundCloud …). Name, tags and cover stay.</span></span>
+                <button className="btn small" onClick={() => setReplacing(true)}>Replace…</button>
+              </div>
+              <AudioEditor track={t} onSaved={() => { loadAll(); onSaved?.(); }} />
+            </>
+          )}
+          {replacing && t && <ReplaceAudio track={t} pid={pid} onClose={() => setReplacing(false)} onDone={() => { loadAll(); onSaved?.(); }} onFindDetails={() => { setTab('details'); setFinding(true); }} onRecognize={() => setTab('recognize')} />}
           {tab === 'recognize' && t && <Recognize track={t} onApplied={() => { loadAll(); onSaved?.(); }} />}
           {tab === 'file' && t && detail && <FileTab track={t} detail={detail} onChanged={() => { loadAll(); onSaved?.(); }} />}
           {coverOpen && (

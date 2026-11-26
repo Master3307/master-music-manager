@@ -16,6 +16,7 @@ import { token, sha256, uuid } from '../lib/crypto.js';
 import { audit } from '../db.js';
 import { ingest, receive } from '../inbox.js';
 import { hasBinary } from '../media/ffmpeg.js';
+import { take } from '../uploads.js';
 
 const prepared = new Map(); // download token -> { profileId, ids, opts, userId, at }
 setInterval(() => {
@@ -193,6 +194,88 @@ export function register(app) {
     if (!fs.existsSync(f)) return res.status(404).end();
     res.sendFile(f, { acceptRanges: true });
   });
+  // Replace a song's audio with another recording (a file, or any link yt-dlp
+  // can read: YouTube, SoundCloud, a direct link …). Tags, cover and lyrics stay;
+  // the new sound is stored in the song's own format. A restore point comes first.
+  app.post(
+    '/api/p/:pid/tracks/:id/replace-audio',
+    requireUser,
+    json((req) => {
+      const p = profileOf(req);
+      const t = lib.byId(p.id, req.params.id);
+      if (!t) throw httpError(404, 'Track not found');
+      const url = str(req.body.url, 2000).trim();
+      const upload = req.body.uploadId ? take(String(req.body.uploadId), req.user.id) : null;
+      if (!url && !upload) throw httpError(400, 'Pick a file or paste a link');
+      if (url && !/^https?:\/\//i.test(url)) throw httpError(400, 'That isn’t a web link');
+      return {
+        job: jobs.start(
+          'edit',
+          `New audio for ${t.title || t.filename}`,
+          async (ctx) => {
+            const work = fs.mkdtempSync(path.join(PATHS.cache, 'replace-'));
+            try {
+              let src = upload?.file;
+              if (url) {
+                ctx.log(`Getting the audio from ${url}`);
+                const d = (await import('../settings.js')).get('downloads');
+                const cookies = await import('../cookies.js');
+                const jar = cookies.open();
+                try {
+                  const args = ['--no-colors', '--newline', '--no-playlist', '-f', 'ba/b', '-o', path.join(work, 'new.%(ext)s')];
+                  if (jar.file) args.push('--cookies', jar.file);
+                  args.push(url);
+                  await ctx.run(d.ytdlpBin || 'yt-dlp', args, {
+                    onData: (line) => {
+                      const m = line.match(/(\d+(?:\.\d+)?)%/);
+                      if (m) ctx.progress(Number(m[1]) / 200, `Downloading ${Math.round(Number(m[1]))}%`);
+                    },
+                  });
+                } catch (e) {
+                  if (/is not installed/.test(e.message)) throw new Error('yt-dlp isn’t installed. Install it in Settings → Downloads, or upload a file instead.');
+                  throw e;
+                } finally {
+                  jar.close();
+                }
+                src = fs.readdirSync(work).filter((f) => f.startsWith('new.') && !f.endsWith('.part')).map((f) => path.join(work, f))[0];
+                if (!src) throw new Error('Nothing could be downloaded from that link');
+              }
+              const info = await ff.probe(src).catch(() => null);
+              if (!info?.audio) throw new Error('There is no sound in that file or link');
+              const abs = lib.absPath(p, t.path);
+              const old = await ff.probe(abs).catch(() => ({}));
+              const out = path.join(work, `out${path.extname(abs)}`);
+              const ext = path.extname(abs).slice(1).toLowerCase();
+              // New sound, the old file's tags (and its cover, where the format has one).
+              const args = ['-y', '-hide_banner', '-nostdin', '-i', src, '-i', abs, '-map', '0:a:0', '-map_metadata', '1'];
+              if (old.hasCover && ['mp3', 'flac', 'm4a', 'mp4', 'm4b'].includes(ext)) args.push('-map', '1:v?', '-c:v', 'copy', '-disposition:v', 'attached_pic');
+              args.push(...ff.encoderFor(abs, info));
+              if (['m4a', 'mp4', 'm4b'].includes(ext)) args.push('-movflags', '+faststart');
+              args.push(out);
+              ctx.progress(0.6, 'Putting the new audio in');
+              await ctx.run('ffmpeg', args, { quiet: true });
+              lib.createRestorePoint(p, t, 'Before replacing the audio');
+              await fsp.copyFile(out, abs);
+              const nt = await lib.rescanFile(p, t.path);
+              (await import('../db.js')).db.prepare('UPDATE tracks SET audio_hash = NULL WHERE id = ?').run(nt.id); // it's another recording now
+              lib.touchService(p);
+              audit(req.user.id, 'audio.replace', { path: t.path, from: url || upload?.name });
+              const fresh = lib.byId(p.id, nt.id) || nt;
+              const missing = ['title', 'artist', 'album'].filter((k) => !fresh[k]);
+              if (!fresh.cover) missing.push('cover');
+              ctx.log(`✓ New audio in ${t.path} (${Math.round(info.duration || 0)} s)`);
+              return { track: nt.id, missing, duration: info.duration };
+            } finally {
+              fs.rmSync(work, { recursive: true, force: true });
+              if (upload?.file) fs.rmSync(upload.file, { force: true });
+            }
+          },
+          { userId: req.user.id },
+        ),
+      };
+    }),
+  );
+
   app.post(
     '/api/p/:pid/tracks/:id/edit/apply',
     requireUser,

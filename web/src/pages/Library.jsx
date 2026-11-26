@@ -11,6 +11,7 @@ import { get, post, api } from '../lib/api.js';
 import { fmtTime, fmtSize, date, cx, store, plural, debounce } from '../lib/util.js';
 import { Cover, Empty, Menu, MenuItem, MenuSep, Modal, Notice, Spinner, Toggle, useConfirm } from '../components/ui.jsx';
 import { SongMenu, AddToPlaylist, ShareDialog } from '../components/Songs.jsx';
+import { ReplaceAudio } from '../components/ReplaceAudio.jsx';
 import { TrackEditor } from '../components/TrackEditor.jsx';
 import { ImageEditor } from '../components/ImageEditor.jsx';
 import { TransferDialog, RemoveDialog } from '../components/Transfer.jsx';
@@ -98,6 +99,7 @@ export default function Library() {
   const [cmd, setCmd] = useState(params.get('cmd') || '');
   const [cmdOpen, setCmdOpen] = useState(Boolean(params.get('cmd')));
   const [preview, setPreview] = useState(null);
+  const [replace, setReplace] = useState(null);
   const [editor, setEditor] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [help, setHelp] = useState(false);
@@ -410,7 +412,8 @@ export default function Library() {
               <MenuItem icon={Image} onClick={() => setDialog('cover')}>Set a cover…</MenuItem>
               <MenuItem icon={ArrowRightLeft} onClick={() => setDialog('transfer')}>Move or copy to…</MenuItem>
               {menu.list.length > 1 && menu.list.length <= 12 && <MenuItem icon={Merge} onClick={() => setDialog('merge')}>Merge into one…</MenuItem>}
-              {menu.list.length === 1 && <MenuItem icon={Wand2} onClick={() => setEditor([menu.list[0].id])}>Find the right details…</MenuItem>}
+              {menu.list.length === 1 && <MenuItem icon={Wand2} onClick={() => setEditor({ ids: [menu.list[0].id], start: 'find' })}>Find the right details…</MenuItem>}
+              {menu.list.length === 1 && <MenuItem icon={FileAudio} onClick={() => setReplace(menu.list[0])}>Replace the audio…</MenuItem>}
               {menu.list.length === 1 && <MenuItem icon={Download} onClick={() => window.open(`/api/p/${pid}/tracks/${menu.list[0].id}/file?download=1`)}>Download</MenuItem>}
               <MenuItem icon={Trash2} danger onClick={() => setDialog('remove')}>Remove…</MenuItem>
             </>
@@ -431,7 +434,8 @@ export default function Library() {
       )}
       {preview && <CommandPreview preview={preview} setPreview={setPreview} onApply={() => runCommand(true)} />}
       {help && <FilterHelp kind={help} commands={fields?.commands} onClose={() => setHelp(false)} />}
-      {editor && <TrackEditor ids={editor} onClose={() => setEditor(null)} onSaved={load} />}
+      {editor && <TrackEditor ids={Array.isArray(editor) ? editor : editor.ids} start={editor.start} onClose={() => setEditor(null)} onSaved={load} />}
+      {replace && <ReplaceAudio track={replace} pid={pid} onClose={() => setReplace(null)} onDone={load} onFindDetails={() => setEditor({ ids: [replace.id], start: 'find' })} onRecognize={() => setEditor({ ids: [replace.id], start: 'recognize' })} />}
       {dialog === 'playlist' && <AddToPlaylist songs={songs(selected)} pid={pid} onClose={() => setDialog(null)} />}
       {dialog === 'merge' && <MergeDialog tracks={selected} onClose={() => setDialog(null)} onDone={() => { setSel(new Set()); load(); }} />}
       {dialog === 'fill' && <FillMissing query={sel.size ? `${[...sel].map((id) => `id=${id}`).join(' OR ')}` : undefined} onClose={() => setDialog(null)} onDone={load} />}
