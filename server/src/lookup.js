@@ -11,15 +11,22 @@ import { log } from './lib/log.js';
 const UA = `MasterMusicManager/${VERSION} (https://github.com/Master3307/master-music-manager)`;
 // MusicBrainz asks for at most one request per second: every call waits its turn.
 let chain = Promise.resolve();
-function mb(path) {
+export function mb(path) {
   const run = chain.then(() => mbFetch(path));
   chain = run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, 1100)));
   return run;
 }
 async function mbFetch(path) {
-  const r = await fetch(`https://musicbrainz.org/ws/2/${path}`, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
-  if (!r.ok) throw new Error(`MusicBrainz answered ${r.status}`);
-  return r.json();
+  // MusicBrainz is often "busy" (503) for a moment: try again a few times.
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch(`https://musicbrainz.org/ws/2/${path}`, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
+    if (r.ok) return r.json();
+    if ((r.status === 503 || r.status === 429) && attempt < 3) {
+      await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+      continue;
+    }
+    throw new Error(`MusicBrainz answered ${r.status}`);
+  }
 }
 
 const norm = (s) =>

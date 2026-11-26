@@ -10,6 +10,7 @@ import { LyricsEditor } from './LyricsEditor.jsx';
 import { AudioEditor } from './AudioEditor.jsx';
 import { FindDetails } from '../pages/Inbox.jsx';
 import { ReplaceAudio } from './ReplaceAudio.jsx';
+import { DetailsFinder } from './DetailsFinder.jsx';
 import { Wand2 } from 'lucide-react';
 
 const GROUPS = ['Main', 'People', 'Text', 'Sound', 'Release', 'Sorting', 'IDs'];
@@ -32,7 +33,8 @@ export function TrackEditor({ ids, onClose, onSaved, start }) {
   const [group, setGroup] = useState('Main');
   const [coverOpen, setCoverOpen] = useState(false);
   const [coverV, setCoverV] = useState(0);
-  const [finding, setFinding] = useState(start === 'find');
+  const [finding, setFinding] = useState(false);
+  const [filling, setFilling] = useState(start === 'find');
   const [replacing, setReplacing] = useState(false);
   const confirm = useConfirm();
 
@@ -155,8 +157,9 @@ export function TrackEditor({ ids, onClose, onSaved, start }) {
           <Tabs tabs={tabs} value={tab} onChange={setTab} />
           {tab === 'details' && !multi && (
             <div className="row" style={{ marginTop: -6 }}>
-              <button className="btn small" onClick={() => setFinding(true)}><Wand2 /> Find the right details online</button>
-              <span className="faint" style={{ fontSize: 12.5 }}>Fills in what you pick; you see everything before it’s saved.</span>
+              <button className="btn small primary" onClick={() => setFilling(true)}><Wand2 /> Fill in everything</button>
+              <button className="btn small ghost" onClick={() => setFinding(true)}>Search by name</button>
+              <span className="faint" style={{ fontSize: 12.5 }}>From links, a file or by itself. You see everything before it’s saved.</span>
             </div>
           )}
           {finding && t && (
@@ -250,7 +253,8 @@ export function TrackEditor({ ids, onClose, onSaved, start }) {
               <AudioEditor track={t} onSaved={() => { loadAll(); onSaved?.(); }} />
             </>
           )}
-          {replacing && t && <ReplaceAudio track={t} pid={pid} onClose={() => setReplacing(false)} onDone={() => { loadAll(); onSaved?.(); }} onFindDetails={() => { setTab('details'); setFinding(true); }} onRecognize={() => setTab('recognize')} />}
+          {filling && t && <DetailsFinder track={t} pid={pid} onClose={() => setFilling(false)} onSaved={() => { loadAll(); onSaved?.(); }} />}
+          {replacing && t && <ReplaceAudio track={t} pid={pid} onClose={() => setReplacing(false)} onDone={() => { loadAll(); onSaved?.(); }} onFindDetails={() => { setTab('details'); setFilling(true); }} onRecognize={() => setTab('recognize')} />}
           {tab === 'recognize' && t && <Recognize track={t} onApplied={() => { loadAll(); onSaved?.(); }} />}
           {tab === 'file' && t && detail && <FileTab track={t} detail={detail} onChanged={() => { loadAll(); onSaved?.(); }} />}
           {coverOpen && (
