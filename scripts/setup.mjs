@@ -26,7 +26,7 @@ console.log(`\n${acc('◉')} ${b('Master Music Manager setup')}\n`);
 let port = Number(process.env.MMM_PORT || cur.MMM_PORT || 4545);
 if (!process.env.MMM_PORT && !cur.MMM_PORT && !(await free(port))) for (let p = 4546; p < 4600; p++) if (await free(p)) { port = p; break; }
 port = Number(await ask('Port', String(port)));
-const defaultData = cur.MMM_DATA_DIR || (process.getuid?.() === 0 ? '/var/lib/master-music-manager' : path.join(os.homedir(), '.local/share/master-music-manager'));
+const defaultData = process.env.MMM_DATA_DIR || cur.MMM_DATA_DIR || (process.getuid?.() === 0 ? '/var/lib/master-music-manager' : path.join(os.homedir(), '.local/share/master-music-manager'));
 const data = await ask('Where the app keeps its data (not your music)', defaultData);
 fs.mkdirSync(data, { recursive: true });
 
