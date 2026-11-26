@@ -107,6 +107,21 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
       ctx.log(`Source: ${src.label} (${src.tool})`);
       const env = { ...process.env, PYTHONUNBUFFERED: '1' };
       let seen = 0;
+      // What people see while it runs: the step, which song, and progress over the whole job.
+      const st = { total: 0, item: 1, pct: 0, name: '', failed: 0, phase: 'Looking up the link…' };
+      const show = () => {
+        const of = st.total > 1 ? `${st.item} of ${st.total}` : '';
+        const what = [st.phase, of, st.name && `“${st.name.slice(0, 70)}”`, st.pct > 0 && st.pct < 100 ? `${Math.round(st.pct)}%` : ''].filter(Boolean).join(' · ');
+        const extra = [seen && `${seen} done`, st.failed && `${st.failed} failed`].filter(Boolean).join(', ');
+        const text = extra ? `${what} (${extra})` : what;
+        const overall = st.total ? (st.item - 1 + st.pct / 100) / st.total : st.pct / 100;
+        // One update, and only when something changed (yt-dlp prints many lines a second).
+        if (text === st.lastText && Math.abs(overall - (st.lastP || 0)) < 0.01) return;
+        st.lastText = text;
+        st.lastP = overall;
+        ctx.progress(Math.min(0.97, Math.max(0, overall)), text);
+      };
+      show();
       const ids = [];
       // Ingest files as soon as each one finishes, like spotify-dl's autosave.
       const pick = async () => {
@@ -131,7 +146,7 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
             fs.rmSync(infoFile, { force: true });
             ids.push(id);
             seen++;
-            ctx.detail(`${seen} downloaded`);
+            show();
           } catch (e) {
             ctx.log(`! ${f}: ${e.message}`);
             fs.rmSync(full, { force: true });
@@ -157,8 +172,15 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
           await ctx.run(d.spotdlBin || 'spotdl', args, {
             env,
             onData: (s) => {
+              // spotDL: "Found 12 songs", "Downloaded "Artist - Title"", "3/12 complete", errors.
+              const found = s.match(/Found (\d+) songs?/i);
+              if (found) Object.assign(st, { total: Number(found[1]), phase: 'Downloading' });
+              const got = s.match(/Downloaded "([^"]+)"/i);
+              if (got) Object.assign(st, { name: got[1], phase: 'Downloading' });
               const m = s.match(/(\d+)\/(\d+)\s+complete/i);
-              if (m) ctx.progress(Number(m[1]) / Number(m[2]), `${m[1]} / ${m[2]}`);
+              if (m) Object.assign(st, { item: Math.min(Number(m[1]) + 1, Number(m[2])), total: Number(m[2]), pct: 0 });
+              if (/LookupError|AudioProviderError|No results found/i.test(s)) st.failed++;
+              show();
             },
           });
         } else {
@@ -178,10 +200,18 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
             env,
             allowFail: true,
             onData: (s) => {
-              const item = s.match(/Downloading item (\d+) of (\d+)/);
-              if (item) ctx.detail(`Item ${item[1]} of ${item[2]}`);
-              const pct = s.match(/\[download\]\s+([\d.]+)%/);
-              if (pct) ctx.progress(Number(pct[1]) / 100);
+              for (const line of s.split(/\r?\n/)) {
+                const item = line.match(/Downloading item (\d+) of (\d+)/);
+                if (item) Object.assign(st, { item: Number(item[1]), total: Number(item[2]), pct: 0, name: '', phase: 'Downloading' });
+                const dest = line.match(/\[download\] Destination: (.+)$/);
+                if (dest) Object.assign(st, { name: path.basename(dest[1]).replace(/ \[[\w-]{6,}\]\.[^.]+$/, '').replace(/\.[^.]+$/, ''), phase: 'Downloading' });
+                const pct = line.match(/\[download\]\s+([\d.]+)%/);
+                if (pct) Object.assign(st, { pct: Number(pct[1]), phase: 'Downloading' });
+                if (/\[(ExtractAudio|Merger|FixupM4a|VideoConvertor|ThumbnailsConvertor)\]/.test(line)) Object.assign(st, { phase: 'Converting', pct: 0 });
+                if (/^\[(youtube|soundcloud|bandcamp|generic|\w+)\]\s.*(Downloading (webpage|API JSON|playlist|tv client)|Extracting URL)/i.test(line) && st.pct === 0) st.phase = st.total ? st.phase : 'Looking up the link…';
+                if (/^ERROR:/.test(line)) st.failed++;
+              }
+              show();
             },
           });
         }
@@ -189,19 +219,23 @@ export function start({ input, profileId, autoImport, video, userId, extra = {} 
         jar.close();
         clearInterval(watcher);
       }
+      Object.assign(st, { phase: 'Checking the files', pct: 0, name: '' });
+      show();
       await pick();
       fs.rmSync(work, { recursive: true, force: true });
-      if (!ids.length) throw new Error('Nothing was downloaded. Open the details to see why.');
+      if (!ids.length) throw new Error(st.failed ? `Nothing could be downloaded (${st.failed} failed). Open the details to see why.` : 'Nothing was downloaded. Open the details to see why.');
       audit(userId, 'download', { source: src.id, count: ids.length });
       if (autoImport ?? !d.reviewBeforeImport) {
         const p = getProfile(profileId);
         if (p?.local_path) {
           const imp = importItems(ids, { profileId, userId });
           ctx.log(`Importing straight away (job ${imp})`);
+          ctx.detail(`Putting ${ids.length} ${ids.length === 1 ? 'song' : 'songs'} into your library…`);
           await jobs.wait(imp);
+          return { items: ids, count: ids.length, failed: st.failed, imported: true };
         } else ctx.log('Waiting in the inbox: pick a library to import into.');
       } else ctx.log('Waiting in the inbox for you to check the details.');
-      return { items: ids, count: ids.length };
+      return { items: ids, count: ids.length, failed: st.failed, waiting: true };
     },
     { userId },
   );

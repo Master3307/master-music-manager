@@ -152,8 +152,10 @@ async function execute(id, fn) {
   } catch (e) {
     const cancelled = e?.cancelled || controller.signal.aborted;
     db.prepare('UPDATE jobs SET status = ?, error = ?, finished_at = ? WHERE id = ?').run(cancelled ? 'cancelled' : 'failed', e?.message || String(e), now(), id);
-    write(cancelled ? '■ Cancelled' : `✗ ${e?.stack || e}`);
-    if (!cancelled) log.error(`job ${id} (${row(id)?.title}) failed:`, e?.message || e);
+    // A plain failure ("nothing could be downloaded") is a message for people; only a fault in the code gets its stack.
+    const bug = e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError || e instanceof RangeError;
+    write(cancelled ? '■ Cancelled' : `✗ ${bug ? e.stack : e?.message || e}`);
+    if (!cancelled) (bug ? log.error : log.warn)(`job ${id} (${row(id)?.title}) failed:`, bug ? e.stack : e?.message || e);
   } finally {
     out.end();
     running.delete(id);

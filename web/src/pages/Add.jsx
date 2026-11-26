@@ -4,7 +4,7 @@ import { Download, Upload, FolderUp, Link2, HardDrive, Check, CircleAlert, Wrenc
 import { useApp, useLoad } from '../lib/app.jsx';
 import { get, post, uploadFile } from '../lib/api.js';
 import { fmtSize, cx, plural } from '../lib/util.js';
-import { Field, Notice, Spinner, Toggle, Progress, Segmented } from '../components/ui.jsx';
+import { Field, Notice, Spinner, Toggle, Progress, Segmented, JobDetails } from '../components/ui.jsx';
 import { JobRow } from '../components/Shell.jsx';
 import { FolderPicker } from '../components/FolderPicker.jsx';
 import { useAdding } from '../lib/adding.jsx';
@@ -139,6 +139,9 @@ export default function Add() {
 
   const T = tools.data;
   const myJobs = mine.map((id) => jobs[id]).filter(Boolean);
+  // Downloads show as cards right under the box; everything else in the list further down.
+  const downloads = mine.filter((id) => !jobs[id] || jobs[id].kind === 'download').slice(0, 20);
+  const otherJobs = myJobs.filter((j) => j.kind !== 'download');
   return (
     <>
       <div className="page-head">
@@ -177,6 +180,14 @@ export default function Add() {
           <span className="grow" />
           <button className="btn primary" onClick={start} disabled={!text.trim() || privacy}><Download /> Download</button>
         </div>
+        {downloads.length > 0 && (
+          <div className="col dl-cards" style={{ gap: 8, marginTop: 14 }}>
+            {downloads.map((id) => <DownloadCard key={id} job={jobs[id]} />)}
+            {downloads.some((id) => jobs[id] && !['queued', 'running'].includes(jobs[id].status)) && (
+              <button className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={add.forgetJobs}>Clear finished</button>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="panel">
@@ -236,10 +247,10 @@ export default function Add() {
         </section>
       </div>
 
-      {myJobs.length > 0 && (
+      {otherJobs.length > 0 && (
         <section className="section">
           <div className="section-head"><h2 style={{ fontSize: 16 }}>Working on it</h2><button className="more btn small ghost" onClick={add.forgetJobs}>Clear the list</button></div>
-          <div className="panel" style={{ padding: 6 }}>{myJobs.slice(0, 12).map((j) => <JobRow key={j.id} job={j} />)}</div>
+          <div className="panel" style={{ padding: 6 }}>{otherJobs.slice(0, 12).map((j) => <JobRow key={j.id} job={j} />)}</div>
         </section>
       )}
 
@@ -275,3 +286,46 @@ export default function Add() {
 }
 
 export { useMemo };
+
+/** One thing you asked to download: what it is, what's happening right now, and what came of it. */
+function DownloadCard({ job: j }) {
+  const [open, setOpen] = useState(false);
+  if (!j) {
+    return (
+      <div className="dl-card">
+        <div className="row"><Spinner size={15} /><b className="grow">Starting…</b></div>
+        <Progress indeterminate />
+      </div>
+    );
+  }
+  const live = ['queued', 'running'].includes(j.status);
+  const what = j.title.replace(/^[^:]+:\s*/, '');
+  const source = j.title.split(':')[0];
+  const r = j.result || {};
+  return (
+    <div className={cx('dl-card', j.status)}>
+      <div className="row" style={{ gap: 10 }}>
+        {live ? <Spinner size={15} /> : j.status === 'done' ? <Check size={16} style={{ color: 'var(--ok)' }} /> : <CircleAlert size={16} style={{ color: 'var(--danger)' }} />}
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="ellipsis mono" style={{ fontSize: 12.5 }} title={what}>{what}</div>
+          <div className="faint" style={{ fontSize: 12.5 }}>
+            {source} ·{' '}
+            {live
+              ? j.detail || (j.status === 'queued' ? 'Waiting for its turn…' : 'Starting…')
+              : j.status === 'done'
+                ? `${r.count === 1 ? '1 song' : `${r.count} songs`} ${r.imported ? 'put into your library' : 'waiting for you to check, just below'}${r.failed ? ` · ${r.failed} couldn’t be downloaded` : ''}`
+                : j.status === 'cancelled'
+                  ? 'Stopped'
+                  : j.error}
+          </div>
+        </div>
+        {live && <span className="faint tabular" style={{ fontSize: 12.5 }}>{j.progress ? `${Math.round(j.progress * 100)}%` : ''}</span>}
+        {live && <button className="btn small ghost" onClick={() => post(`jobs/${j.id}/cancel`)}>Stop</button>}
+        {!live && j.status === 'done' && !r.imported && <button className="btn small" onClick={() => document.getElementById('review')?.scrollIntoView({ behavior: 'smooth' })}>Check them</button>}
+        <button className="btn small ghost" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Hide' : 'Details'}</button>
+      </div>
+      {live && <Progress value={j.progress} indeterminate={!j.progress} />}
+      {open && <JobDetails jobId={j.id} defaultOpen live={live} />}
+    </div>
+  );
+}
