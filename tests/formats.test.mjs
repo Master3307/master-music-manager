@@ -68,3 +68,26 @@ test('tag edits keep the cover and the other tags', async (t) => {
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// music-metadata 13 renamed track/disc (trackNumber, trackTotal …): they must read and write.
+test('track and disc numbers read and write', async (t) => {
+  const { execFileSync } = await import('node:child_process');
+  const fs = await import('node:fs');
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+  } catch {
+    return t.skip('FFmpeg is not installed');
+  }
+  const tags = await import('../server/src/library/tags.js');
+  const dir = fs.mkdtempSync(`${process.env.TMPDIR || '/tmp'}/mmm-trk-`);
+  for (const ext of ['mp3', 'flac']) {
+    const f = `${dir}/t.${ext}`;
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=duration=1', '-metadata', 'track=3/12', '-metadata', 'disc=2/2', f]);
+    let r = await tags.read(f);
+    assert.deepEqual([r.tags.track, r.tags.tracktotal, r.tags.disc, r.tags.disctotal], [3, 12, 2, 2], `${ext}: read`);
+    await tags.write(f, { tags: { track: 5, tracktotal: 11, disc: 1, disctotal: 3 } });
+    r = await tags.read(f);
+    assert.deepEqual([r.tags.track, r.tags.tracktotal, r.tags.disc, r.tags.disctotal], [5, 11, 1, 3], `${ext}: written`);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});

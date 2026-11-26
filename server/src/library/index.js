@@ -181,13 +181,19 @@ export async function rescanFile(profile, rel, { oldRel } = {}) {
   return refreshRow(profile.id, info.lastInsertRowid) || byId(profile.id, info.lastInsertRowid);
 }
 
+// Bump when reading tags changes, so every library re-reads its files once
+// (2: track and disc numbers, which music-metadata 13 had renamed).
+const READ_FORMAT = 2;
 export function scan(profile, { full = false, userId } = {}) {
+  const formats = settings.get('scanFormat') || {};
+  const upgrade = formats[profile.id] !== READ_FORMAT;
+  if (upgrade) full = true;
   return jobs.start(
     'scan',
     `${full ? 'Full' : 'Quick'} scan · ${profile.name}`,
     async (ctx) => {
       if (!profile.local_path) throw new Error('No folder is linked to this profile');
-      ctx.log(`Scanning ${profile.local_path} (${full ? 'every file' : 'new and changed files'})`);
+      ctx.log(`Scanning ${profile.local_path} (${full ? 'every file' : 'new and changed files'})${upgrade ? ' once, to pick up track and disc numbers' : ''}`);
       const known = new Map(db.prepare('SELECT id, path, size, mtime, hash FROM tracks WHERE profile_id = ?').all(profile.id).map((r) => [r.path, r]));
       let files = [];
       for await (const f of walk(profile.local_path, profile.local_path)) files.push(f);
@@ -253,6 +259,7 @@ export function scan(profile, { full = false, userId } = {}) {
       }
       invalidate(profile.id);
       ctx.log(`${changed} read, ${failed} unreadable, ${gone.length} removed`);
+      if (upgrade) settings.set('scanFormat', { [profile.id]: READ_FORMAT });
       if (profile.url) {
         try {
           const matched = await syncRemoteIds(profile, ctx);

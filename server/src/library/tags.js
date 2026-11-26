@@ -171,16 +171,16 @@ export async function read(file, { covers = false } = {}) {
         v = c.year;
         break;
       case 'track':
-        v = c.track?.no;
+        v = c.trackNumber ?? c.track?.no; // music-metadata 13 names them flat
         break;
       case 'tracktotal':
-        v = c.track?.of;
+        v = c.trackTotal ?? c.track?.of;
         break;
       case 'disc':
-        v = c.disk?.no;
+        v = c.discNumber ?? c.disk?.no;
         break;
       case 'disctotal':
-        v = c.disk?.of;
+        v = c.discTotal ?? c.disk?.of;
         break;
       case 'comment':
         v = commentText(c.comment);
@@ -251,14 +251,13 @@ export function buildPatch(file, edit) {
   const fmt = formatOf(file);
   const patch = {};
   const t = edit.tags || {};
-  const pairs = { track: ['track', 'no'], tracktotal: ['track', 'of'], disc: ['disk', 'no'], disctotal: ['disk', 'of'] };
+  const pairs = { track: 'trackNumber', tracktotal: 'trackTotal', disc: 'discNumber', disctotal: 'discTotal' };
   for (const [key, raw] of Object.entries(t)) {
     const fd = FIELD[key];
     if (!fd) continue;
     const empty = raw == null || raw === '' || (Array.isArray(raw) && !raw.length);
     if (pairs[key]) {
-      const [k, part] = pairs[key];
-      patch[k] = { ...(patch[k] || {}), [part]: empty ? null : Number.parseInt(raw, 10) || null };
+      patch[pairs[key]] = empty ? null : Number.parseInt(raw, 10) || null;
       continue;
     }
     if (key === 'year') {

@@ -21,6 +21,17 @@ const LABELS = {
 };
 const show = (v) => (Array.isArray(v) ? v.join(', ') : v == null ? '' : String(v));
 const same = (a, b) => show(a).toLowerCase().trim() === show(b).toLowerCase().trim();
+const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
+const STATUS = { new: 'new', changed: 'changes', adds: 'adds', same: 'same' };
+// Lists (labels, ISRCs, people, genres …) are added to, never cut down.
+const LISTS = new Set(['genre', 'artists', 'composer', 'lyricist', 'writer', 'producer', 'engineer', 'mixer', 'remixer', 'arranger', 'conductor', 'djmixer', 'label', 'isrc', 'releasetype', 'musicbrainz_artistid', 'musicbrainz_albumartistid']);
+const asList = (v) => (Array.isArray(v) ? v : empty(v) ? [] : String(v).split(/\s*;\s*/));
+function withCurrent(k, found, now) {
+  if (!LISTS.has(k) || empty(now)) return found;
+  const out = [...asList(now)];
+  for (const v of asList(found)) if (!out.some((x) => same(x, v))) out.push(v);
+  return out;
+}
 
 /**
  * Fill in a song's details from links and/or a file, plus whatever we can
@@ -40,6 +51,7 @@ export function DetailsFinder({ track, pid, onClose, onSaved }) {
   const [useLyrics, setUseLyrics] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
   const [more, setMore] = useState(false);
+  const [onlyChanges, setOnlyChanges] = useState(true);
   const input = useRef(null);
 
   const look = async () => {
@@ -52,9 +64,10 @@ export function DetailsFinder({ track, pid, onClose, onSaved }) {
       setBusy('Looking everywhere… (MusicBrainz, Deezer, Apple Music, the sound itself)');
       const r = await post('details-from', { urls: links.split(/\s+/).filter(Boolean), uploadId, track: { pid, id: track.id } });
       setRes(r);
-      setPick(r.fields);
+      const fields = Object.fromEntries(Object.entries(r.fields).map(([k, v]) => [k, withCurrent(k, v, r.current?.[k])]));
+      setPick(fields);
       // Ticked: what's new or different. Untouched: what already matches.
-      setOn(Object.fromEntries(Object.keys(r.fields).map((k) => [k, !same(r.fields[k], r.current?.[k])])));
+      setOn(Object.fromEntries(Object.keys(fields).map((k) => [k, !same(fields[k], r.current?.[k])])));
       setCover(track.cover ? null : r.covers?.[0]?.url || null);
       setUseLyrics(false);
     } catch (e) {
@@ -64,6 +77,10 @@ export function DetailsFinder({ track, pid, onClose, onSaved }) {
   };
 
   const conflicts = useMemo(() => Object.fromEntries((res?.conflicts || []).map((c) => [c.field, c.options])), [res]);
+  // How each found value compares with what the song has now.
+  const status = (k) => (empty(res?.current?.[k]) ? 'new' : same(res.current[k], pick[k]) ? 'same' : LISTS.has(k) ? 'adds' : 'changed');
+  const counts = { new: 0, changed: 0, adds: 0, same: 0 };
+  for (const k of Object.keys(res?.fields || {})) counts[status(k)]++;
   const count = Object.values(on).filter(Boolean).length + (cover ? 1 : 0) + (useLyrics ? 1 : 0);
 
   const apply = async () => {
@@ -139,10 +156,26 @@ export function DetailsFinder({ track, pid, onClose, onSaved }) {
           </div>
           {res.errors?.map((e) => <div key={e.url} className="faint row" style={{ fontSize: 12.5, gap: 6 }}><CircleAlert size={14} /> {e.url}: {e.message}</div>)}
           {!Object.keys(res.fields).length && <Notice kind="warn">Nothing was found. Try a link to the song, or check its title and artist.</Notice>}
+          {Object.keys(res.fields).length > 0 && (
+            <div className="compare-summary">
+              <span><b className="st st-new">{counts.new}</b> new</span>
+              <span><b className="st st-changed">{counts.changed}</b> different from now</span>
+              {counts.adds > 0 && <span><b className="st st-adds">{counts.adds}</b> add to a list</span>}
+              <span><b className="st st-same">{counts.same}</b> already the same</span>
+              <span className="grow" />
+              <label className="row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={onlyChanges} onChange={(e) => setOnlyChanges(e.target.checked)} /> Only show what changes</label>
+            </div>
+          )}
           {res.covers?.length > 0 && (
             <div className="col" style={{ gap: 6 }}>
-              <b style={{ fontSize: 13 }}>Cover{track.cover ? ' (it has one; pick one to replace it)' : ''}</b>
+              <b style={{ fontSize: 13 }}>Cover{track.cover ? '' : ' (it has none yet)'}</b>
               <div className="row wrap" style={{ gap: 8 }}>
+                {track.cover && (
+                  <button className={cx('cover-pick', 'now', !cover && 'on')} onClick={() => setCover(null)} title="Keep the cover it has">
+                    <img src={`/api/p/${pid}/tracks/${track.id}/cover?size=200`} alt="" />
+                    <small>Now (keep)</small>
+                  </button>
+                )}
                 {res.covers.map((c) => (
                   <button key={c.url} className={cx('cover-pick', cover === c.url && 'on')} onClick={() => setCover(cover === c.url ? null : c.url)} title={c.from}>
                     <img src={c.url.startsWith('data:') ? c.url : `/api/fetch-image?url=${encodeURIComponent(c.url)}`} alt="" onError={(e) => (e.currentTarget.parentElement.style.display = 'none')} />
@@ -153,15 +186,16 @@ export function DetailsFinder({ track, pid, onClose, onSaved }) {
             </div>
           )}
           {GROUPS.map(([name, keys], gi) => {
-            const here = keys.filter((k) => k in res.fields);
+            const here = keys.filter((k) => k in res.fields && (!onlyChanges || status(k) !== 'same'));
             if (!here.length || (gi === 4 && !more)) return gi === 4 && here.length ? <button key={name} className="btn small ghost" onClick={() => setMore(true)}><ChevronDown /> {name} ({here.length})</button> : null;
             return (
               <div key={name} className="detail-group">
-                <div className="detail-group-head">{name}</div>
+                <div className="detail-group-head"><span /><span>{name}</span><span>Now</span><span>New</span><span /></div>
                 {here.map((k) => (
                   <label key={k} className={cx('detail-row', !on[k] && 'off')}>
                     <input type="checkbox" checked={Boolean(on[k])} onChange={(e) => setOn({ ...on, [k]: e.target.checked })} />
                     <span className="detail-name">{LABELS[k] || k}</span>
+                    <span className={cx('detail-now', empty(res.current?.[k]) && 'none', k.startsWith('musicbrainz') && 'mono')}>{empty(res.current?.[k]) ? 'empty' : show(res.current[k])}</span>
                     <span className="detail-value">
                       {conflicts[k] ? (
                         <span className="row wrap" style={{ gap: 4 }}>
@@ -172,19 +206,19 @@ export function DetailsFinder({ track, pid, onClose, onSaved }) {
                       ) : (
                         <span className={k.startsWith('musicbrainz') ? 'mono' : ''}>{show(pick[k])}</span>
                       )}
-                      {res.current?.[k] != null && res.current[k] !== '' && !same(res.current[k], pick[k]) && <small className="faint">now: {show(res.current[k])}</small>}
                     </span>
-                    <small className="faint detail-from">{(res.from?.[k] || []).join(', ')}</small>
+                    <span className="detail-status"><span className={`st st-${status(k)}`}>{STATUS[status(k)]}</span><small className="faint">{(res.from?.[k] || []).join(', ')}</small></span>
                   </label>
                 ))}
               </div>
             );
           })}
+          {onlyChanges && Object.keys(res.fields).length > 0 && counts.new + counts.changed + counts.adds === 0 && <Notice>Everything found is already the same as now. Untick “Only show what changes” to see it all.</Notice>}
           {res.custom?.PERFORMER && <div className="faint" style={{ fontSize: 12.5 }}>Performers: {res.custom.PERFORMER} (saved too)</div>}
           {res.lyrics && (
             <div className="panel col" style={{ gap: 8 }}>
               <div className="row">
-                <label className="row grow" style={{ gap: 8 }}><input type="checkbox" checked={useLyrics} onChange={(e) => setUseLyrics(e.target.checked)} /> <b>Lyrics</b> <span className="faint" style={{ fontSize: 12.5 }}>{res.lyrics.synced ? 'synced' : 'plain'} · {res.lyrics.provider} · {res.lyrics.score}% match</span></label>
+                <label className="row grow" style={{ gap: 8 }}><input type="checkbox" checked={useLyrics} onChange={(e) => setUseLyrics(e.target.checked)} /> <b>Lyrics</b> <span className="faint" style={{ fontSize: 12.5 }}>{res.lyrics.synced ? 'synced' : 'plain'} · {res.lyrics.provider} · {res.lyrics.score}% match · now: {track.haslyrics ? 'it has lyrics, these would replace them' : 'none'}</span></label>
                 <button className="btn small ghost" onClick={() => setShowLyrics(!showLyrics)}>{showLyrics ? 'Hide' : 'Read them first'}</button>
               </div>
               {showLyrics && <pre className="lyrics-preview">{res.lyrics.text}</pre>}
