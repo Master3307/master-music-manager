@@ -67,9 +67,7 @@ export function RemoveDialog({ ids, onClose, onDone }) {
   const [scope, setScope] = useState('here');
   const [places, setPlaces] = useState([]);
   const [preview, setPreview] = useState(null);
-  const { isAdmin } = useApp();
   const [what, setWhat] = useState('trash'); // trash | out
-  const [folder, setFolder] = useState('');
   const target = scope === 'here' ? [{ profileId: pid }] : scope === 'all' ? 'all' : [{ profileId: pid }, ...places];
   useEffect(() => {
     setPreview(null);
@@ -78,10 +76,10 @@ export function RemoveDialog({ ids, onClose, onDone }) {
   }, [scope, JSON.stringify(places)]);
   const go = async () => {
     try {
-      const r = await post('remove-everywhere', { from: pid, ids, places: target, takeOut: what === 'out' ? folder.trim() || true : undefined });
+      const r = await post('remove-everywhere', { from: pid, ids, places: target, takeOut: what === 'out' || undefined });
       onClose();
       afterJob(r.job).then((j) => {
-        if (j.status === 'done') toast(j.result.folder ? `${plural(j.result.removed, 'song')} taken out, now in ${j.result.folder}` : `${j.result.removed} files moved to the trash`, { kind: 'ok' });
+        if (j.status === 'done') toast(j.result.takenOut ? `${plural(j.result.removed, 'song')} taken out. The files stay where they are.` : `${j.result.removed} files moved to the trash`, { kind: 'ok' });
         else fail(j.error);
         onDone?.();
       });
@@ -109,18 +107,10 @@ export function RemoveDialog({ ids, onClose, onDone }) {
         <Spinner />
       )}
       <Field label="What happens to the files">
-        <Segmented value={what} onChange={setWhat} options={[{ value: 'trash', label: 'Into the trash' }, { value: 'out', label: 'Take them out, keep the files' }]} />
+        <Segmented value={what} onChange={setWhat} options={[{ value: 'trash', label: 'Into the trash' }, { value: 'out', label: 'Just take them out of here' }]} />
       </Field>
       {what === 'out' ? (
-        <>
-          <p className="muted" style={{ margin: 0 }}>The songs leave the library and your music server, but the files are kept in a folder outside it, sorted as before. Linked instances still put theirs in the trash.</p>
-          {isAdmin && (
-            <Field label="Folder" hint="Outside your libraries. Empty: the suggested one.">
-              <input className="input mono" value={folder} onChange={(e) => setFolder(e.target.value)} placeholder={preview?.takeOutFolder || ''} />
-            </Field>
-          )}
-          {!isAdmin && preview?.takeOutFolder && <p className="faint mono" style={{ margin: 0, fontSize: 12.5 }}>{preview.takeOutFolder}</p>}
-        </>
+        <p className="muted" style={{ margin: 0 }}>They disappear from Master Music Manager only. The files stay exactly where they are, and your music server keeps them. Bring them back any time under Library → Trash → Taken out.</p>
       ) : (
         <Notice>Everything goes to the trash on each side first. Empty the trash to free the space.</Notice>
       )}

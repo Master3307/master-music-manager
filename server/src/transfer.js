@@ -107,6 +107,20 @@ export function register(app) {
    * Remove songs (by identical audio) from some or all places.
    * body: { from: profileId, ids, places: [{ profileId } | { nodeId }] | 'all' }
    */
+  // Songs taken out of a library, and bringing them back.
+  app.get('/api/p/:pid/taken-out', requireUser, json((req) => {
+    const p = getProfile(req.params.pid);
+    if (!canUse(req.user, p)) throw httpError(403, 'Not yours');
+    return lib.takenOut(p.id);
+  }));
+  app.post('/api/p/:pid/taken-out/back', requireUser, json(async (req) => {
+    const p = getProfile(req.params.pid);
+    if (!canUse(req.user, p) || !p.local_path) throw httpError(403, 'Not yours');
+    const paths = (Array.isArray(req.body.paths) ? req.body.paths : []).map(String).slice(0, 10000);
+    const back = await lib.takeBackIn(p, paths, req.user.id);
+    return { back: back.length };
+  }));
+
   app.post(
     '/api/remove-everywhere',
     requireUser,
@@ -116,18 +130,8 @@ export function register(app) {
       const tracks = (req.body.ids || []).map((id) => lib.byId(src.id, id)).filter(Boolean);
       const hashes = tracks.map((t) => db.prepare('SELECT audio_hash FROM tracks WHERE id = ?').get(t.id)?.audio_hash);
       const all = req.body.places === 'all';
-      // "Take out": keep the files in a folder instead of the trash.
-      let outFolder = null;
-      if (req.body.takeOut) {
-        const custom = typeof req.body.takeOut === 'string' && req.body.takeOut.trim();
-        if (custom && req.user.role !== 'admin') throw httpError(403, 'Only admins can pick another folder');
-        outFolder = path.resolve(custom || lib.takeOutFolder(src));
-        if (!path.isAbsolute(custom || outFolder)) throw httpError(400, 'Give the full path of the folder');
-        for (const p of db.prepare('SELECT local_path FROM profiles WHERE local_path IS NOT NULL').all()) {
-          const rel = path.relative(path.resolve(p.local_path), outFolder);
-          if (!rel || (!rel.startsWith('..') && !path.isAbsolute(rel))) throw httpError(400, 'Pick a folder outside your libraries, or the songs come right back with the next scan');
-        }
-      }
+      // "Take out": gone from Master Music Manager, the files stay where they are.
+      const takeOut = Boolean(req.body.takeOut);
       const places = all
         ? [...db.prepare('SELECT id FROM profiles WHERE local_path IS NOT NULL').all().map((p) => ({ profileId: p.id })), ...db.prepare('SELECT id FROM nodes').all().map((n) => ({ nodeId: n.id }))]
         : req.body.places || [{ profileId: src.id }];
@@ -137,7 +141,7 @@ export function register(app) {
           const p = getProfile(pl.profileId);
           return { ...pl, name: p?.name, count: pl.profileId === src.id ? tracks.length : hashes.filter((h) => h && db.prepare('SELECT 1 FROM tracks WHERE profile_id = ? AND audio_hash = ?').get(pl.profileId, h)).length };
         });
-        return { tracks: tracks.length, places: where, unhashed: hashes.filter((h) => !h).length, takeOutFolder: lib.takeOutFolder(src) };
+        return { tracks: tracks.length, places: where, unhashed: hashes.filter((h) => !h).length };
       }
       return {
         job: jobs.start(
@@ -161,9 +165,9 @@ export function register(app) {
               const victims = p.id === src.id ? tracks : hashes.filter(Boolean).flatMap((h) => db.prepare('SELECT id FROM tracks WHERE profile_id = ? AND audio_hash = ?').all(p.id, h).map((r) => lib.byId(p.id, r.id)));
               for (const t of victims.filter(Boolean)) {
                 ctx.check();
-                if (outFolder) {
-                  const to = lib.takeOut(p, t, outFolder, req.user.id);
-                  ctx.log(`out    ${p.name}: ${t.path}  →  ${to}`);
+                if (takeOut) {
+                  lib.takeOut(p, t, req.user.id);
+                  ctx.log(`out    ${p.name}: ${t.path}  (the file stays)`);
                 } else {
                   lib.trash(p, t, req.user.id);
                   ctx.log(`trash  ${p.name}: ${t.path}`);
@@ -171,7 +175,7 @@ export function register(app) {
                 removed++;
               }
             }
-            return { removed, folder: outFolder };
+            return { removed, takenOut: takeOut };
           },
           { userId: req.user.id },
         ),

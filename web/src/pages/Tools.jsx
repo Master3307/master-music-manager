@@ -202,6 +202,40 @@ export function Export() {
   );
 }
 
+/** Songs taken out of the library (their files untouched), with a way back. */
+function TakenOut() {
+  const { pid, fail, toast } = useApp();
+  const list = useLoad(() => (pid ? get(`p/${pid}/taken-out`) : []), [pid]);
+  const back = async (paths) => {
+    try {
+      const r = await post(`p/${pid}/taken-out/back`, { paths });
+      toast(`${plural(r.back, 'song')} back in the library`, { kind: 'ok' });
+      list.reload();
+    } catch (e) {
+      fail(e);
+    }
+  };
+  if (!list.data?.length) return null;
+  return (
+    <div className="panel col" style={{ gap: 6, marginBottom: 18 }}>
+      <div className="row">
+        <b className="grow">Taken out ({list.data.length})</b>
+        <button className="btn small primary" onClick={() => back(list.data.map((x) => x.path))}><RotateCcw /> Take all back in</button>
+      </div>
+      <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>Their files are where they always were; they’re just not shown or changed here.</p>
+      {list.data.map((x) => (
+        <div key={x.path} className="row" style={{ padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="ellipsis">{x.title || x.path.split('/').pop()} <span className="faint">{x.artist ? `· ${x.artist}` : ''}</span></div>
+            <div className="faint mono ellipsis" style={{ fontSize: 12 }}>{x.path} · {ago(x.at)}</div>
+          </div>
+          <button className="btn small" onClick={() => back([x.path])}><RotateCcw /> Take back in</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Trash() {
   const { fail, toast } = useApp();
   const confirm = useConfirm();
@@ -228,6 +262,7 @@ export function Trash() {
         <button className="btn danger" onClick={async () => { if (await confirm({ title: 'Empty the trash?', body: 'The files are deleted for good.', confirm: 'Delete forever', danger: true })) { const r = await del('trash'); toast(`${r.removed} files deleted`); reload(); } }}><Trash2 /> Empty the trash</button>
       </div>
       {loading && <Spinner />}
+      <TakenOut />
       {data && !data.length && <Empty icon={Trash2} title="The trash is empty" />}
       {(data || []).map((x) => (
         <div key={x.id} className="row" style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }} onContextMenu={(e) => menus.custom(e, x.path.split('/').pop(), [{ label: 'Put back', icon: RotateCcw, onClick: () => putBack(x) }, { label: 'Copy the path', icon: Copy, onClick: () => navigator.clipboard.writeText(x.path).then(() => toast('Copied')) }])}>

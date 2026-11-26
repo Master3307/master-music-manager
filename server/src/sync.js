@@ -114,6 +114,8 @@ async function listPlace(m, ctx, o = DEFAULTS) {
   if (o.edits) await lib.ensureHashes(p, ctx); // tells edited files apart
   const items = new Map();
   for (const t of db.prepare('SELECT id, path, mtime, hash, audio_hash FROM tracks WHERE profile_id = ? AND audio_hash IS NOT NULL').all(p.id)) if (!items.has(t.audio_hash)) items.set(t.audio_hash, t);
+  // Taken out here: the file is still there, so it must not be copied in again.
+  for (const t of db.prepare('SELECT path, audio_hash FROM taken_out WHERE profile_id = ? AND audio_hash IS NOT NULL').all(p.id)) if (!items.has(t.audio_hash)) items.set(t.audio_hash, { path: t.path, takenOut: true });
   return items;
 }
 
@@ -242,7 +244,9 @@ export function run(groupId, { userId = null } = {}) {
         const have = places.filter((p) => p.items.has(h));
         const lack = places.filter((p) => !p.items.has(h) && !p.suspect);
         if (!have.length || !lack.length) continue;
-        const src = have.find((p) => !p.m.nodeId) || have[0];
+        const sources = have.filter((p) => !p.items.get(h).takenOut);
+        if (!sources.length) continue;
+        const src = sources.find((p) => !p.m.nodeId) || sources[0];
         for (const dst of lack) want.push([h, src, dst]);
       }
       ctx.log(`${want.length} copies to make${removed.size ? `, ${nRemoved} removed` : ''}`);
@@ -269,7 +273,7 @@ export function run(groupId, { userId = null } = {}) {
       if (o.edits) {
         const libs = places.filter((p) => !p.m.nodeId);
         for (const h of all) {
-          const copies = libs.filter((p) => p.items.has(h) && !p.items.get(h).copied).map((p) => ({ p, item: p.items.get(h) }));
+          const copies = libs.filter((p) => p.items.has(h) && !p.items.get(h).copied && !p.items.get(h).takenOut).map((p) => ({ p, item: p.items.get(h) }));
           if (copies.length < 2 || new Set(copies.map((c) => c.item.hash)).size < 2 || copies.some((c) => !c.item.hash)) continue;
           const newest = copies.reduce((a, b) => (b.item.mtime > a.item.mtime ? b : a));
           for (const c of copies) {

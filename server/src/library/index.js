@@ -191,7 +191,10 @@ export function scan(profile, { full = false, userId } = {}) {
       const known = new Map(db.prepare('SELECT id, path, size, mtime, hash FROM tracks WHERE profile_id = ?').all(profile.id).map((r) => [r.path, r]));
       let files = [];
       for await (const f of walk(profile.local_path, profile.local_path)) files.push(f);
-      ctx.log(`${files.length} media files found`);
+      // Songs you took out stay out (their files are still there).
+      const out = takenOutSet(profile.id);
+      if (out.size) files = files.filter((f) => !out.has(path.relative(profile.local_path, f).split(path.sep).join('/')));
+      ctx.log(`${files.length} media files found${out.size ? ` (${out.size} taken out, left alone)` : ''}`);
       const plan = readPlan(profile.local_path);
       if (plan.gentle) {
         ctx.log(`${plan.forced ? 'Set to spinning disk' : plan.detected === 'hdd' ? 'Spinning disk found' : 'Disk type unknown, so treating it like a spinning disk'}: reading one file at a time in the order they lie on the disk, and pausing while music plays. Slower, but quiet and easy on the drive. (Settings → Library & naming → Disk)`);
@@ -495,36 +498,36 @@ export function trash(profile, track, userId) {
   return dest;
 }
 
-/** Where songs go that are taken out of a library: next to its folder, easy to find. */
-export function takeOutFolder(profile) {
-  const root = path.resolve(profile.local_path);
-  return path.join(path.dirname(root), `${path.basename(root)} (taken out)`);
-}
+// Songs taken out of Master Music Manager. The file stays exactly where it is
+// (also for the music server); we just stop showing and touching it.
+db.exec(`CREATE TABLE IF NOT EXISTS taken_out (
+  profile_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  title TEXT, artist TEXT, album TEXT, audio_hash TEXT,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (profile_id, path)
+)`);
+export const takenOut = (profileId) => db.prepare('SELECT * FROM taken_out WHERE profile_id = ? ORDER BY at DESC').all(profileId);
+const takenOutSet = (profileId) => new Set(db.prepare('SELECT path FROM taken_out WHERE profile_id = ?').all(profileId).map((r) => r.path));
 
-/**
- * Take a song out of the library (and so off the music server) without
- * deleting it: the file moves to a folder outside every library, keeping its
- * Artist/Album/… path there.
- */
-export function takeOut(profile, track, folder, userId) {
-  const abs = absPath(profile, track.path);
-  let dest = path.join(folder, track.path);
-  for (let i = 2; fs.existsSync(dest); i++) dest = path.join(folder, track.path.replace(/(\.[^.]+)$/, ` (${i})$1`));
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  try {
-    fs.renameSync(abs, dest); // same disk: instant, nothing is read or copied
-  } catch {
-    fs.copyFileSync(abs, dest);
-    fs.rmSync(abs);
-  }
-  const lrc = abs.replace(/\.[^.]+$/, '.lrc');
-  if (fs.existsSync(lrc)) fs.renameSync(lrc, dest.replace(/\.[^.]+$/, '.lrc'));
+/** Take a song out of Master Music Manager. Nothing happens to the file. */
+export function takeOut(profile, track, userId) {
+  const hash = db.prepare('SELECT audio_hash FROM tracks WHERE id = ?').get(track.id)?.audio_hash || null;
+  db.prepare('INSERT OR REPLACE INTO taken_out (profile_id, path, title, artist, album, audio_hash, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(profile.id, track.path, track.title || null, track.artist || null, track.album || null, hash, now());
   db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
   refreshRow(profile.id, track.id);
-  removeEmptyDirs(profile, path.dirname(abs));
-  touchService(profile);
-  audit(userId, 'track.take-out', { profile: profile.id, path: track.path, to: dest });
-  return dest;
+  audit(userId, 'track.take-out', { profile: profile.id, path: track.path });
+}
+
+/** Back in: read the file again, as if it were new. */
+export async function takeBackIn(profile, paths, userId) {
+  const back = [];
+  for (const rel of paths) {
+    db.prepare('DELETE FROM taken_out WHERE profile_id = ? AND path = ?').run(profile.id, rel);
+    if (fs.existsSync(absPath(profile, rel))) back.push(await rescanFile(profile, rel));
+  }
+  audit(userId, 'track.take-back', { profile: profile.id, count: paths.length });
+  return back;
 }
 
 export function trashList() {
