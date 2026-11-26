@@ -16,11 +16,12 @@
 #   --config <file>      Navidrome's config file (found by itself)
 #   --plugins <folder>   Navidrome's plugin folder (found by itself)
 #   --user <name>        the user Navidrome runs as (found by itself)
+#   --data <folder>      Navidrome's data folder, the one with navidrome.db (found by itself)
 # Without --url and --secret it only installs the file.
 set -euo pipefail
 
 REPO="Master3307/master-music-manager"
-URL="" SECRET="" HISTORY=true FILE="" CONTAINER="" CONFIG="" PLUGINS="" NDUSER=""
+URL="" SECRET="" HISTORY=true FILE="" CONTAINER="" CONFIG="" PLUGINS="" NDUSER="" DATA_ARG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="${2%/}"; shift 2 ;;
@@ -31,7 +32,8 @@ while [ $# -gt 0 ]; do
     --config) CONFIG="$2"; shift 2 ;;
     --plugins) PLUGINS="$2"; shift 2 ;;
     --user) NDUSER="$2"; shift 2 ;;
-    -h|--help) sed -n '2,19p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --data) DATA_ARG="${2%/}"; shift 2 ;;
+    -h|--help) sed -n '2,20p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -83,11 +85,42 @@ if [ -n "$CONTAINER" ]; then
   say "Found Navidrome in the Docker container ${b}$CONTAINER${off}"
 else
   MODE=native
-  unit=""
-  if command -v systemctl >/dev/null 2>&1; then
+  unit="" FOUND="" ENV_DATA="" ENV_PLUGINS=""
+  # 1. A running Navidrome tells us everything: its arguments, environment and user.
+  pid="$(pgrep -x navidrome 2>/dev/null | head -1 || true)"
+  if [ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ]; then
+    FOUND=process
+    mapfile -d '' pargs < "/proc/$pid/cmdline"
+    ND_BIN="$(readlink "/proc/$pid/exe" 2>/dev/null || printf '%s' "${pargs[0]}")"
+    for ((i = 1; i < ${#pargs[@]}; i++)); do
+      case "${pargs[$i]}" in
+        --datafolder) ENV_DATA="${pargs[$((i + 1))]}" ;;
+        --datafolder=*) ENV_DATA="${pargs[$i]#*=}" ;;
+        -c|--configfile) [ -z "$CONFIG" ] && CONFIG="${pargs[$((i + 1))]}" ;;
+        --configfile=*) [ -z "$CONFIG" ] && CONFIG="${pargs[$i]#*=}" ;;
+      esac
+    done
+    if [ -r "/proc/$pid/environ" ]; then
+      penv() { tr '\0' '\n' < "/proc/$pid/environ" | sed -n "s/^$1=//p" | tail -1; }
+      [ -z "$ENV_DATA" ] && ENV_DATA="$(penv ND_DATAFOLDER)"
+      [ -z "$CONFIG" ] && CONFIG="$(penv ND_CONFIGFILE)"
+      ENV_PLUGINS="$(penv ND_PLUGINS_FOLDER)"
+    fi
+    [ -z "$NDUSER" ] && NDUSER="$(ps -o user= -p "$pid" | tr -d ' ')"
+    WORKDIR="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+    punit="$(ps -o unit= -p "$pid" 2>/dev/null | tr -d ' ')"
+    case "$punit" in *.service) RESTART="systemctl restart $punit" ;; *) RESTART="stop Navidrome and start it again the way you usually do" ;; esac
+    say "Found Navidrome running (process $pid, user $NDUSER)"
+  fi
+  # 2. A service that is switched on or running.
+  if [ -z "$FOUND" ] && command -v systemctl >/dev/null 2>&1; then
     unit="$(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^navidrome.*\.service$/) { print $i; exit } }')" || true
   fi
-  if [ -n "$unit" ]; then
+  if [ -n "$unit" ] && ! systemctl is-enabled -q "$unit" 2>/dev/null && ! systemctl is-active -q "$unit" 2>/dev/null; then
+    unit="" # installed but never used: look for the Navidrome that really holds the music
+  fi
+  if [ -z "$FOUND" ] && [ -n "$unit" ]; then
+    FOUND=service
     exec_line="$(systemctl show -p ExecStart --value "$unit" 2>/dev/null)"
     [ -z "$ND_BIN" ] && ND_BIN="$(printf '%s' "$exec_line" | sed -n 's/.*path=\([^ ;]*\).*/\1/p')"
     argv="$(printf '%s' "$exec_line" | sed -n 's/.*argv\[\]=\([^;]*\).*/\1/p')"
@@ -102,16 +135,40 @@ else
     RESTART="systemctl restart $unit"
     say "Found Navidrome as the service ${b}$unit${off}"
   fi
+  # 3. Look for an existing Navidrome database (also one started by hand, e.g. from a shell alias).
+  if [ -z "$FOUND" ] && [ -z "$DATA_ARG" ]; then
+    homes="$HOME"
+    [ -n "${SUDO_USER:-}" ] && homes="$homes $(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    dbs=()
+    for h in $homes; do for d in "$h"/.local/share/* "$h"/.config/* "$h"/navidrome "$h"/.navidrome; do [ -f "$d/navidrome.db" ] && dbs+=("$d"); done; done
+    for d in /var/lib/navidrome /opt/navidrome /srv/navidrome /data; do
+      if [ -f "$d/navidrome.db" ] || { [ "$(id -u)" != 0 ] && sudo -n test -f "$d/navidrome.db" 2>/dev/null; }; then dbs+=("$d"); fi
+    done
+    mapfile -t dbs < <(printf '%s\n' "${dbs[@]}" | awk 'NF && !seen[$0]++')
+    if [ "${#dbs[@]}" -gt 1 ]; then
+      say "Found more than one Navidrome:"; printf '    %s\n' "${dbs[@]}"
+      die "Say which one with --data <folder> (or start the right one, then run this again)."
+    fi
+    if [ "${#dbs[@]}" = 1 ]; then
+      DATA_ARG="${dbs[0]}"; FOUND=folder
+      say "Found Navidrome's data in ${b}$DATA_ARG${off}"
+      RESTART="stop Navidrome and start it again the way you usually do"
+    fi
+  fi
   [ -z "$ND_BIN" ] && ND_BIN="$(command -v navidrome || true)"
   for p in /usr/bin/navidrome /usr/local/bin/navidrome /opt/navidrome/navidrome; do [ -z "$ND_BIN" ] && [ -x "$p" ] && ND_BIN="$p"; done
   [ -n "$ND_BIN" ] || die "Navidrome wasn't found on this machine. Run this where Navidrome runs (or pass --container for Docker)."
   if [ -n "$CONFIG" ] && [ "${CONFIG#/}" = "$CONFIG" ] && [ -n "$WORKDIR" ]; then CONFIG="$WORKDIR/$CONFIG"; fi
-  if [ -z "$CONFIG" ]; then
+  if [ -z "$CONFIG" ] && [ "$FOUND" = folder ]; then
+    [ -f "$DATA_ARG/navidrome.toml" ] && CONFIG="$DATA_ARG/navidrome.toml"
+  elif [ -z "$CONFIG" ] && [ "$FOUND" = process ]; then
+    [ -f "$WORKDIR/navidrome.toml" ] && CONFIG="$WORKDIR/navidrome.toml"
+  elif [ -z "$CONFIG" ] && [ -z "$DATA_ARG" ]; then
     for p in /etc/navidrome/navidrome.toml /var/lib/navidrome/navidrome.toml /opt/navidrome/navidrome.toml "${WORKDIR:-/nonexistent}/navidrome.toml" "$(dirname "$ND_BIN")/navidrome.toml"; do
       [ -f "$p" ] && { CONFIG="$p"; break; }
     done
   fi
-  DATA="${ENV_DATA:-$(toml_get "$CONFIG" "" DataFolder)}"
+  DATA="${DATA_ARG:-${ENV_DATA:-$(toml_get "$CONFIG" "" DataFolder)}}"
   DATA="${DATA:-${WORKDIR:-$(dirname "${CONFIG:-$ND_BIN}")}}"
   [ -z "$PLUGINS" ] && PLUGINS="${ENV_PLUGINS:-$(toml_get "$CONFIG" Plugins Folder)}"
   PLUGINS="${PLUGINS:-$DATA/plugins}"
@@ -130,10 +187,22 @@ nd() {
   local cmd=("$ND_BIN")
   [ -n "$CONFIG" ] && cmd+=(-c "$CONFIG")
   cmd+=(--datafolder "$DATA" plugin "$@")
-  if [ "$(id -un)" = "$NDUSER" ]; then (cd "$DATA" && "${cmd[@]}")
-  elif [ "$(id -u)" = 0 ]; then (cd "$DATA" && runuser -u "$NDUSER" -- "${cmd[@]}")
-  elif command -v sudo >/dev/null 2>&1; then (cd "$DATA" && sudo -u "$NDUSER" -- "${cmd[@]}")
+  # No cd: Navidrome's data folder is often closed to everyone but its own user.
+  if [ "$(id -un)" = "$NDUSER" ]; then "${cmd[@]}"
+  elif [ "$(id -u)" = 0 ]; then runuser -u "$NDUSER" -- "${cmd[@]}"
+  elif command -v sudo >/dev/null 2>&1; then sudo -u "$NDUSER" -- "${cmd[@]}"
   else die "Navidrome runs as '$NDUSER'. Run this with sudo."; fi
+}
+# Run a Navidrome command; on failure show what Navidrome said, not a guess.
+nd_or_die() {
+  local what="$1"; shift
+  local out
+  if ! out="$(nd "$@" 2>&1)" || printf '%s' "$out" | grep -qE 'level=(fatal|error)'; then
+    printf '%s✗ %s%s\n' "$red" "$what" "$off" >&2
+    printf '%s\n' "$out" | quiet | sed 's/^/  │ /' | tail -n 12 >&2
+    exit 1
+  fi
+  printf '%s\n' "$out"
 }
 # Drop Navidrome's ASCII banner (lines of only these characters) and info logs.
 quiet() { grep -vE "^[][ _|\\/\`'.,()V-]*\$|Version: |level=(info|debug)|No configuration file" || true; }
@@ -158,9 +227,15 @@ else
   if [ -w "$PLUGINS" ]; then cp "$tmp/master-music-manager.ndp" "$PLUGINS/"; else sudo cp "$tmp/master-music-manager.ndp" "$PLUGINS/"; fi
   chown "$NDUSER:" "$PLUGINS" "$PLUGINS/master-music-manager.ndp" 2>/dev/null || sudo chown "$NDUSER:" "$PLUGINS" "$PLUGINS/master-music-manager.ndp" 2>/dev/null || true
 fi
-nd validate "$PLUGINS/master-music-manager.ndp" 2>&1 | quiet | grep -q ': OK$' || die "Navidrome didn't accept the plugin file. Is Navidrome 0.60 or newer?"
-nd rescan 2>&1 | quiet >/dev/null
-nd list 2>&1 | grep -q '^master-music-manager ' || die "Navidrome doesn't list the plugin. Check that plugins are on (Plugins.Enabled = true in its config)."
+nd_or_die "Navidrome didn't accept the plugin file:" validate "$PLUGINS/master-music-manager.ndp" | grep -q ': OK$' || die "Navidrome didn't accept the plugin file."
+# A Navidrome that has never been started has no database to register plugins in.
+if [ "$MODE" = native ] && nd list 2>&1 | grep -q 'no such table'; then
+  say "${ok}✓${off} The file is in place, but this Navidrome has never been started, so there's nothing to connect it to yet."
+  say "Start Navidrome once (${b}sudo systemctl enable --now ${unit:-navidrome}${off}) and run this again, or run it on the machine where your Navidrome really runs."
+  exit 1
+fi
+nd_or_die "Navidrome couldn't look for new plugins:" rescan >/dev/null
+nd_or_die "Navidrome couldn't list its plugins:" list | grep -q '^master-music-manager ' || die "Navidrome doesn't list the plugin. Check that plugins are on (Plugins.Enabled = true in its config)."
 say "${ok}✓${off} Installed"
 
 if [ -z "$URL" ]; then
@@ -177,12 +252,16 @@ else say "${red}!${off} $URL doesn't answer from here. The plugin is set up anyw
 
 step "Connecting and enabling it"
 cfg="$(printf '{"url":"%s","secret":"%s","syncHistory":%s}' "$URL" "$SECRET" "$HISTORY")"
-nd edit master-music-manager --config "$cfg" --all-users 2>&1 | quiet
-nd enable master-music-manager 2>&1 | quiet
+nd_or_die "Navidrome couldn't save the plugin's settings:" edit master-music-manager --config "$cfg" --all-users >/dev/null
+nd_or_die "Navidrome couldn't enable the plugin:" enable master-music-manager >/dev/null
 nd list 2>&1 | awk '$1 == "master-music-manager"' | grep -q true || die "Navidrome didn't enable it. Its log says why (plugin errors are listed there)."
 echo
 say "${ok}✓ Set up and enabled.${off}"
 # A running Navidrome loads plugin changes made here when it starts.
-say "Last step: restart Navidrome so it loads the plugin (music playing right now stops for a moment):"
-say "  ${b}${RESTART:-restart Navidrome}${off}"
+if [ "$MODE" = docker ] || [ "${FOUND:-}" = process ] || { [ -n "${unit:-}" ] && systemctl is-active -q "$unit" 2>/dev/null; }; then
+  say "Last step: restart Navidrome so it loads the plugin (music playing right now stops for a moment):"
+  say "  ${b}${RESTART:-restart Navidrome}${off}"
+else
+  say "Navidrome isn't running right now; it loads the plugin the next time it starts."
+fi
 say "Then every play reaches Master Music Manager. Settings → Navidrome plugin shows when it last heard from it."
