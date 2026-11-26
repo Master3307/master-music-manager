@@ -306,7 +306,7 @@ img { display: block; }
 .searchbar .input { padding-left: 38px; height: 40px; border-radius: 999px; background: color-mix(in oklab, var(--surface) 85%, transparent); }
 .searchbar > svg { position: absolute; left: 13px; top: 11px; width: 18px; height: 18px; color: var(--text-3); pointer-events: none; }
 .searchbar .hint-keys { position: absolute; right: 12px; top: 10px; display: flex; gap: 4px; pointer-events: none; }
-.popover { position: absolute; z-index: 40; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-pop); padding: 6px; min-width: 220px; animation: pop 0.14s var(--ease); max-height: 70vh; overflow: auto; }
+.popover { position: absolute; z-index: 90; /* menus open above dialogs */ background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-pop); padding: 6px; min-width: 220px; animation: pop 0.14s var(--ease); max-height: 70vh; overflow: auto; }
 @keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
 .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: var(--radius-s); border: 0; background: none; cursor: pointer; text-align: left; color: var(--text); }
 .menu-item:hover, .menu-item[aria-selected='true'] { background: var(--surface-2); }
@@ -433,7 +433,8 @@ img { display: block; }
 .modal-body { padding: 10px 20px 20px; display: flex; flex-direction: column; gap: 14px; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .modal-body > * { flex-shrink: 0; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); position: sticky; bottom: 0; background: var(--bg-2); }
-.toasts { position: fixed; right: 18px; bottom: 18px; z-index: 70; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+/* Layers: dialogs 50, full player 60, tour 80, menus 90, notifications 100 (on top of all). */
+.toasts { position: fixed; right: 18px; bottom: 18px; z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .toast { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius); background: var(--surface-2); box-shadow: var(--shadow-pop); max-width: 420px; animation: rise .2s var(--ease); }
 .toast svg { width: 18px; height: 18px; flex: none; }
 .toast.ok svg { color: var(--ok); }

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router';
 import {
@@ -336,7 +337,8 @@ export function Topbar({ deckOpen, toggleDeck }) {
 
 export function Toasts() {
   const { toasts } = useApp();
-  return (
+  // On <body>, like dialogs: inside the app they'd sit under any open dialog.
+  return createPortal(
     <div className="toasts" aria-live="polite">
       {toasts.map((t) => (
         <div key={t.id} className={cx('toast', t.kind)}>
@@ -349,7 +351,8 @@ export function Toasts() {
           )}
         </div>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
