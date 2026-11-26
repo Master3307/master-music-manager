@@ -43,7 +43,8 @@ export function applyAppearance(a) {
   root.dataset.animations = a.animations === false ? 'off' : 'on';
   root.dataset.density = a.density || 'comfortable';
   store.set('mode', a.mode);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', cssVars['--bg'] || '#14131c');
+  // The app's own colour wins over the light/dark defaults in index.html (both tags).
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute('content', cssVars['--bg'] || '#14131c');
   setStyle('mmm-theme-css', custom?.css || '');
   setStyle('mmm-global-css', a.globalCss || '');
 }

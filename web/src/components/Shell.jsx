@@ -3,12 +3,14 @@ import { NavLink, Link, useLocation, useNavigate } from 'react-router';
 import {
   Disc3, Library, Download, BarChart3, Share2, Settings, Search, Terminal, Wifi, WifiOff, HardDrive, ChevronDown, Check, Activity, X, Loader2, CircleAlert, LogOut, User,
   PanelRight, Sun, Moon, Monitor, Inbox, Network, Plus,
+  Smartphone,
 } from 'lucide-react';
 import { useApp } from '../lib/app.jsx';
 import { usePlayer } from '../lib/player.jsx';
 import { post, get } from '../lib/api.js';
 import { cx, ago, store } from '../lib/util.js';
-import { Logo, Menu, MenuItem, MenuSep, JobDetails, Progress, Spinner, GithubIcon } from './ui.jsx';
+import { Logo, Menu, MenuItem, MenuSep, JobDetails, Progress, Spinner, GithubIcon, Modal } from './ui.jsx';
+import { useInstall } from '../lib/install.js';
 
 export const SECTIONS = [
   { id: 'listen', label: 'Listen', icon: Disc3, to: '/', match: /^\/($|listen|albums|artists|genres|playlists|radio|favorites|folders|album\/|artist\/|playlist\/|everywhere)/,
@@ -216,6 +218,8 @@ function UserButton() {
   const { me, settings, saveSetting, isAdmin, listenOnly } = useApp();
   const [m, setM] = useState(null);
   const nav = useNavigate();
+  const inst = useInstall();
+  const [iosHelp, setIosHelp] = useState(false);
   if (listenOnly) return <Link className="btn small primary" to="/login">Log in</Link>;
   const mode = settings?.appearance?.mode;
   const name = me?.user?.displayName || 'Guest';
@@ -245,6 +249,11 @@ function UserButton() {
               <MenuSep />
             </>
           )}
+          {(inst.can || inst.ios) && (
+            <MenuItem icon={Smartphone} onClick={() => (inst.can ? inst.install() : setIosHelp(true))}>
+              Install as an app
+            </MenuItem>
+          )}
           <MenuItem icon={User} onClick={() => nav('/settings/account')}>
             Account & security
           </MenuItem>
@@ -269,6 +278,15 @@ function UserButton() {
             </>
           )}
         </Menu>
+      )}
+      {iosHelp && (
+        <Modal title="Put it on your home screen" icon={<Smartphone />} onClose={() => setIosHelp(false)} footer={<button className="btn primary" onClick={() => setIosHelp(false)}>Got it</button>}>
+          <ol className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9 }}>
+            <li>Tap the <b>Share</b> button in Safari (the square with the arrow).</li>
+            <li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+          </ol>
+          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>It then opens like an app: full screen, its own icon, and the lock screen controls for music.</p>
+        </Modal>
       )}
     </>
   );

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useLocation, Link } from 'react-router';
+import { Routes, Route, Navigate, useLocation, useNavigate, Link } from 'react-router';
 import { useApp } from './lib/app.jsx';
 import { usePlayer } from './lib/player.jsx';
 import { Topbar, Rail, SubNav, Toasts, useInboxCount } from './components/Shell.jsx';
@@ -7,6 +7,7 @@ import { Deck, Capsule } from './components/Deck.jsx';
 import { TourOffer } from './components/Tour.jsx';
 import { Spinner } from './components/ui.jsx';
 import { store, cx } from './lib/util.js';
+import { get } from './lib/api.js';
 import { useMenus } from './components/menus.jsx';
 
 const page = (f) => lazy(f);
@@ -55,6 +56,22 @@ function Shell() {
   const inbox = useInboxCount();
   const menus = useMenus();
   useEffect(() => store.set('deck', deck), [deck]);
+  // App shortcut "Shuffle everything" (long-press the app icon): /?do=shuffle.
+  const { pid, toast } = useApp();
+  const nav = useNavigate();
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    if (q.get('do') !== 'shuffle' || !pid) return;
+    nav('/', { replace: true });
+    get(`p/${pid}/random`, { size: 300 })
+      .then((songs) => {
+        p.playList(songs, 0, pid);
+        // Browsers may want a tap before sound starts.
+        setTimeout(() => !p.audio?.paused || toast('Shuffled. Press play to start.'), 1200);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pid]);
   useEffect(() => {
     const k = (e) => {
       if (e.key === 'p' && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && !e.ctrlKey && !e.metaKey) setDeck((d) => !d);

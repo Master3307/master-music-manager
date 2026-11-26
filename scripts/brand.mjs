@@ -97,25 +97,67 @@ for (const [name, size, opts] of [
 ]) shoot(iconHtml(size, opts), path.join(PUB, name), size, size);
 fs.copyFileSync(path.join(PUB, 'icon-512.png'), path.join(OUT, 'icon-512.png'));
 
+// Every size phones, tablets and desktops ask for when installing the app.
+const ICONS = path.join(PUB, 'icons');
+fs.mkdirSync(ICONS, { recursive: true });
+const SIZES = [48, 72, 96, 128, 144, 152, 167, 180, 192, 256, 384, 512];
+for (const size of SIZES) shoot(iconHtml(size, {}), path.join(ICONS, `icon-${size}.png`), size, size);
+// Maskable: the system cuts its own shape (circle, squircle …), so the mark sits in the safe middle.
+for (const size of [192, 512]) shoot(iconHtml(size, { bg: 'square', pad: 22 }), path.join(ICONS, `maskable-${size}.png`), size, size);
+// Monochrome (Android themed icons): only the shape counts.
+shoot(`<!doctype html><html><body style="margin:0;background:transparent">${mark({ size: 512, bg: false }).replace(/#fff/g, '#ffffff')}</body></html>`, path.join(ICONS, 'monochrome-512.png'), 512, 512);
+// Shortcut icons: the accent tile with a simple sign.
+const GLYPHS = {
+  shuffle: 'M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5',
+  add: 'M12 5v14M5 12h14',
+  library: 'M4 4v16M9 4v16M14 4l6 16',
+  stats: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+};
+for (const [name, d] of Object.entries(GLYPHS))
+  shoot(
+    `<!doctype html><html><body style="margin:0;background:transparent"><svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${ACCENT.hi}"/><stop offset="1" stop-color="${ACCENT.lo}"/></linearGradient></defs><rect width="96" height="96" rx="24" fill="url(#g)"/><g transform="translate(24 24) scale(2)"><path d="${d}" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg></body></html>`,
+    path.join(ICONS, `shortcut-${name}.png`),
+    96,
+    96,
+  );
+// Windows start-menu tile.
+fs.writeFileSync(path.join(PUB, 'browserconfig.xml'), `<?xml version="1.0" encoding="utf-8"?>\n<browserconfig><msapplication><tile><square150x150logo src="/icons/icon-144.png"/><TileColor>${BG}</TileColor></tile></msapplication></browserconfig>\n`);
+
 // Cards
 shoot(card(1280, 640, { tagline: 'Tag, sort, find duplicates, download, play and share your music library.' }), path.join(OUT, 'social-card.png'), 1280, 640);
 shoot(card(1600, 480, { tagline: 'A cheat tool for your music library.', small: true }), path.join(OUT, 'banner.png'), 1600, 480);
 
+// The web app manifest: what phones and computers show when installing it.
+const icon = (src, size, purpose) => ({ src, sizes: `${size}x${size}`, type: 'image/png', ...(purpose ? { purpose } : {}) });
 fs.writeFileSync(
   path.join(PUB, 'site.webmanifest'),
   JSON.stringify(
     {
+      id: '/',
       name: 'Master Music Manager',
       short_name: 'Music Manager',
-      start_url: '/',
+      description: 'Manage, tag, play and share your music library: Navidrome, Jellyfin, OpenSubsonic or just a folder. Downloads, duplicates, covers, lyrics and stats.',
+      lang: 'en',
+      dir: 'ltr',
+      start_url: '/?from=app',
+      scope: '/',
       display: 'standalone',
+      display_override: ['window-controls-overlay', 'standalone', 'minimal-ui'],
+      orientation: 'any',
       background_color: BG,
       theme_color: BG,
-      icons: [
-        { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-        { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      categories: ['music', 'entertainment', 'utilities'],
+      prefer_related_applications: false,
+      launch_handler: { client_mode: ['focus-existing', 'auto'] },
+      icons: [...SIZES.map((n) => icon(`/icons/icon-${n}.png`, n, 'any')), icon('/icons/maskable-192.png', 192, 'maskable'), icon('/icons/maskable-512.png', 512, 'maskable'), icon('/icons/monochrome-512.png', 512, 'monochrome')],
+      shortcuts: [
+        { name: 'Shuffle everything', short_name: 'Shuffle', url: '/?do=shuffle', icons: [icon('/icons/shortcut-shuffle.png', 96)] },
+        { name: 'Add music', short_name: 'Add', url: '/add', icons: [icon('/icons/shortcut-add.png', 96)] },
+        { name: 'Library', url: '/library', icons: [icon('/icons/shortcut-library.png', 96)] },
+        { name: 'Stats', url: '/stats', icons: [icon('/icons/shortcut-stats.png', 96)] },
       ],
+      // Share a link (YouTube, Spotify …) from another app straight into "Add music".
+      share_target: { action: '/add', method: 'GET', enctype: 'application/x-www-form-urlencoded', params: { title: 'title', text: 'text', url: 'url' } },
     },
     null,
     2,

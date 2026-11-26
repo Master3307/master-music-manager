@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Download, Upload, FolderUp, Link2, HardDrive, Check, CircleAlert, Wrench, RefreshCw, Inbox as InboxIcon, X, FolderOpen } from 'lucide-react';
 import { useApp, useLoad } from '../lib/app.jsx';
 import { get, post, uploadFile } from '../lib/api.js';
@@ -29,6 +29,22 @@ export default function Add() {
   const add = useAdding();
   const text = add.draft;
   const setText = add.setDraft;
+  // Shared to the app from another one (YouTube, Spotify …): the link goes into the box.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const shared = [params.get('url'), params.get('text'), params.get('title')].filter(Boolean).join(' ');
+    if (!shared) return;
+    const links = shared.match(/https?:\/\/\S+/g);
+    const add2 = links ? links.join('\n') : shared.trim();
+    setText(text && text.trim() ? `${text.trim()}\n${add2}` : add2);
+    setParams((x) => {
+      x.delete('url');
+      x.delete('text');
+      x.delete('title');
+      return x;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [review, setReview] = useState(settings?.downloads?.reviewBeforeImport !== false);
   const [video, setVideo] = useState(settings?.convert?.animatedCovers !== false);
   const mine = add.jobIds;

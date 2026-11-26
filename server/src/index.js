@@ -103,7 +103,11 @@ app.use('/api', (_req, _res, next) => next(Object.assign(new Error('Not found'),
 // The web app.
 const dist = path.join(ROOT, 'web/dist');
 if (fs.existsSync(dist)) {
-  app.use(express.static(dist, { index: false, maxAge: '1h', setHeaders: (res, f) => /assets\//.test(f) && res.set('Cache-Control', 'public, max-age=31536000, immutable') }));
+  app.use(express.static(dist, { index: false, maxAge: '1h', setHeaders: (res, f) => {
+    if (/assets\//.test(f)) res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    // The service worker and the manifest must always be fresh, or updates get stuck.
+    if (/(sw\.js|site\.webmanifest)$/.test(f)) res.set('Cache-Control', 'no-cache');
+  } }));
   const indexHtml = path.join(dist, 'index.html');
   app.get(/^\/(?!api\/|dav\/|share\/).*/, (_req, res) => res.sendFile(indexHtml));
 } else {
