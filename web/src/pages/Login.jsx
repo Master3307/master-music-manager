@@ -17,6 +17,18 @@ export default function Login() {
   const [err, setErr] = useState(ERRORS[params.get('error')] || null);
   const [busy, setBusy] = useState(false);
   if (me?.user) return <Navigate to="/" replace />;
+  if (me?.setupFromLanOnly)
+    return (
+      <div className="center-page">
+        <div className="auth-card">
+          <Logo size={44} />
+          <h1>Almost ready</h1>
+          <p className="muted">
+            Master Music Manager isn’t set up yet. For safety, the first admin account can only be made from your own network. Open it with its local address (for example <span className="mono">http://192.168.x.x:4545</span>), create the account there, and then this address works too.
+          </p>
+        </div>
+      </div>
+    );
   if (me?.guest && !me?.needsAdmin) return <Navigate to="/" replace />;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 

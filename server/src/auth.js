@@ -151,6 +151,14 @@ const CLI_TOKEN = fs.readFileSync(CLI_TOKEN_FILE, 'utf8').trim();
 const CLI_USER = Object.freeze({ id: null, username: 'mmm-cli', displayName: 'Command line', role: 'admin', prefs: {} });
 const isLoopback = (ip) => ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 
+// Before the first admin exists, the app is wide open; only allow that from
+// this machine or the local network, never through a public tunnel or proxy.
+import { isPrivate } from './lib/net.js';
+const fromLan = (req) => {
+  const ip = String(req.ip || '').replace(/^::ffff:/, '');
+  return isLoopback(req.ip) || ip === '127.0.0.1' || isPrivate(ip);
+};
+
 /** Attach req.user. Without required auth, visitors act as an admin "guest". */
 export function attachUser(req, _res, next) {
   const cli = req.get('x-mmm-cli');
@@ -161,7 +169,8 @@ export function attachUser(req, _res, next) {
   const user = sessionUser(req.cookies?.[COOKIE]);
   const a = settings.get('auth');
   if (user) req.user = user;
-  else if (!a.required) req.user = ANON;
+  else if (!a.required && (adminCount() > 0 || fromLan(req))) req.user = ANON;
+  else if (!a.required) req.user = null; // open mode, but not for the internet before setup
   else if (a.guestAccess === 'listen') req.user = GUEST;
   next();
 }
@@ -236,6 +245,7 @@ export function register(app, { services }) {
       return {
         user: req.user && !req.user.anonymous ? req.user : null,
         guest: req.user?.anonymous || false,
+        setupFromLanOnly: adminCount() === 0 && !fromLan(req),
         listenOnly: Boolean(req.user?.guest),
         perms: permsOf(req.user),
         role: req.user?.role || null,
@@ -261,6 +271,7 @@ export function register(app, { services }) {
     '/api/auth/setup-admin',
     json(async (req, res) => {
       if (adminCount() > 0) throw httpError(409, 'An admin already exists');
+      if (!fromLan(req)) throw httpError(403, 'For safety, create the first admin from your own network (the local address), not through the internet.');
       const username = str(req.body.username, 64).trim();
       const password = str(req.body.password, 256);
       if (!/^[\w.@-]{2,64}$/.test(username)) throw httpError(400, 'Use 2-64 letters, numbers, dots, dashes or underscores');
