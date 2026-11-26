@@ -284,12 +284,12 @@ export default function Library() {
           <button type="button" className="btn small ghost" onClick={() => setHelp('cmd')}>Help</button>
         </form>
       )}
-      <div className="row" style={{ fontSize: 12.5 }}>
+      <div className="row wrap" style={{ fontSize: 12.5, rowGap: 2 }}>
         <span className="faint grow">
           {loading ? 'Loading…' : `${total.toLocaleString()} songs${total > rows.length ? ` (first ${rows.length.toLocaleString()} shown; narrow the filter)` : ''}`}
           {sel.size > 0 && ` · ${sel.size} selected`}
         </span>
-        {sort.length > 0 && <span className="faint">Sorted by {sort.map((s) => `${COLUMNS[s.key]?.label || s.key}${s.desc ? ' ↓' : ''}`).join(', ')} · shift-click adds a column</span>}
+        {sort.length > 0 && <span className="faint">Sorted by {sort.map((s) => `${COLUMNS[s.key]?.label || s.key}${s.desc ? ' ↓' : ''}`).join(', ')} <span className="hide-touch"> · shift-click adds a column</span></span>}
       </div>
       {err && <Notice kind="danger">{err}</Notice>}
 

@@ -291,6 +291,63 @@ export function ContextMenuProvider({ children }) {
     setM({ at: r ? { x: r.right, y: r.bottom + 4 } : { x: e.clientX, y: e.clientY }, align: r ? 'right' : 'left', items });
   }, []);
   const close = useCallback(() => setM(null), []);
+  // Long press on touch screens = right click. Android sends its own
+  // "contextmenu" for that; iPhones don't, so we make one.
+  useEffect(() => {
+    let timer = null;
+    let start = null;
+    let swallowClick = false;
+    const cancel = () => {
+      clearTimeout(timer);
+      timer = null;
+    };
+    const down = (e) => {
+      if (e.touches.length !== 1 || e.target.closest('input, textarea, select, [contenteditable], video, .no-longpress')) return cancel();
+      const t = e.touches[0];
+      start = { x: t.clientX, y: t.clientY, target: e.target };
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        window.getSelection?.()?.removeAllRanges();
+        const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: start.x, clientY: start.y, button: 2 });
+        start.target.dispatchEvent(ev);
+        if (ev.defaultPrevented) {
+          swallowClick = true; // the finger lifting must not also "tap" the item
+          navigator.vibrate?.(8);
+        }
+      }, 550);
+    };
+    const move = (e) => {
+      const t = e.touches[0];
+      if (start && t && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) cancel();
+    };
+    const native = (e) => e.isTrusted && cancel();
+    const click = (e) => {
+      if (!swallowClick) return;
+      swallowClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const up = () => {
+      cancel();
+      if (swallowClick) setTimeout(() => (swallowClick = false), 400);
+    };
+    document.addEventListener('touchstart', down, { passive: true });
+    document.addEventListener('touchmove', move, { passive: true });
+    document.addEventListener('touchend', up);
+    document.addEventListener('touchcancel', up);
+    document.addEventListener('contextmenu', native, true);
+    document.addEventListener('click', click, true);
+    return () => {
+      cancel();
+      document.removeEventListener('touchstart', down);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', up);
+      document.removeEventListener('touchcancel', up);
+      document.removeEventListener('contextmenu', native, true);
+      document.removeEventListener('click', click, true);
+    };
+  }, []);
   return (
     <CtxCtx.Provider value={open}>
       <DialogCtx.Provider value={showDialog}>

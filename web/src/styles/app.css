@@ -611,3 +611,40 @@ img { display: block; }
 .cookie-status[data-state='bad'] { border-color: color-mix(in oklab, var(--danger) 45%, var(--line)); }
 .cookie-status[data-state='bad'] > svg { color: var(--danger); }
 .cookie-guide ol { margin: 0 0 8px; padding-left: 20px; line-height: 1.7; }
+
+/* ---- phones ---- */
+.subnav a { white-space: nowrap; flex: none; }
+@media (hover: none) { .hide-touch { display: none; } }
+@media (max-width: 820px) {
+  /* The top bar: the search gets the room; the library switcher becomes its icon. */
+  .topbar { gap: 8px; padding: 0 10px; }
+  .searchbar { min-width: 0; }
+  .searchbar .hint-keys { display: none; }
+  .profile-pill { max-width: 46px; padding-inline: 10px; }
+  .profile-pill .ellipsis, .profile-pill > svg:last-child { display: none; }
+  /* Page heads stack: the title gets the whole width, buttons go under it. */
+  .page-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .page-head > .grow { width: 100%; }
+  .page-head > .select, .page-head > .btn, .page-head > select { width: 100%; justify-content: center; }
+  .page-sub { max-width: none; }
+  /* Settings sections in one swipeable row. */
+  .settings-nav { gap: 4px; margin: 0 -16px; padding: 0 16px 4px; scrollbar-width: none; }
+  .settings-nav a { flex: none; white-space: nowrap; padding: 7px 12px; }
+  .subnav, .tabs, .chips { scrollbar-width: none; }
+  /* Rows of filter chips scroll sideways instead of filling the screen. */
+  .chips { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding-inline: 16px; }
+  .chips > * { flex: none; }
+  /* iOS zooms into fields with text under 16px. */
+  .input, .select, .textarea, input, select, textarea { font-size: 16px; }
+  /* Room for the home indicator on phones without a button. */
+  .app { grid-template-rows: 56px minmax(0, 1fr) calc(64px + env(safe-area-inset-bottom)); }
+  .rail { padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
+  .capsule { bottom: calc(74px + env(safe-area-inset-bottom)); }
+  /* Bigger targets for fingers. */
+  .btn.icon.small { width: 36px; height: 36px; }
+  /* Dialogs become sheets from the bottom, easy to reach with a thumb. */
+  .overlay { place-items: end stretch; padding: 0; }
+  .modal, .modal.wide { width: 100%; max-height: 92dvh; border-radius: 20px 20px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+}
+/* Long press opens our menus; no system callout or text selection getting in the way. */
+@media (hover: none) { .app { -webkit-touch-callout: none; } .trow, .tile, .panel.row, .chip, .btn { -webkit-user-select: none; user-select: none; } }
